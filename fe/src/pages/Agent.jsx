@@ -239,7 +239,7 @@ const AgentsSidebar = ({ agents, isOpen, onClose }) => {
 export default function Agent() {
   const [runs, setRuns] = useState([])
   const [input, setInput] = useState('')
-  const [isConnecting, setIsConnecting] = useState(true)
+  const [isConnected, setIsConnected] = useState(false)
   const [showAgents, setShowAgents] = useState(false)
   const [activeAgents, setActiveAgents] = useState([])
   const wsRef = useRef(null)
@@ -255,13 +255,13 @@ export default function Agent() {
       return
     }
 
-    setIsConnecting(true)
+    setIsConnected(false)
     const ws = new WebSocket(WS_URL)
     wsRef.current = ws
     
     ws.onopen = () => {
       console.log('WS Connected')
-      setIsConnecting(false)
+      setIsConnected(true)
     }
 
     ws.onmessage = (msg) => {
@@ -338,7 +338,7 @@ export default function Agent() {
       if (wsRef.current === ws) {
         wsRef.current = null
       }
-      setIsConnecting(false)
+      setIsConnected(false)
 
       if (!shouldReconnectRef.current) {
         return
@@ -350,6 +350,10 @@ export default function Agent() {
         reconnectTimerRef.current = null
         connectWS()
       }, 3000)
+    }
+
+    ws.onerror = () => {
+      setIsConnected(false)
     }
   }, [])
 
@@ -420,7 +424,7 @@ export default function Agent() {
       {/* Header */}
       <div className="relative z-10 flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className={`w-2 h-2 rounded-full ${isConnecting ? 'bg-zinc-500' : 'bg-[#ff5aa8] shadow-[0_0_8px_#ff5aa8]'}`} />
+          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[#ff5aa8] shadow-[0_0_8px_#ff5aa8]' : 'bg-zinc-500'}`} />
           {/* <h1 className="text-xl font-semibold text-white tracking-tight">Agent Swarm</h1>*/}
           <span className="text-xs text-zinc-500 border border-zinc-800 rounded-full px-2 py-0.5 bg-zinc-900/50">v1.0</span>
         </div>
