@@ -418,10 +418,10 @@ export default function Agent() {
       </div>
 
       {/* Header */}
-      <div className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-[#1A1A1A] bg-[#0D0D0D]/80 backdrop-blur-sm">
+      <div className="relative z-10 flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
           <div className={`w-2 h-2 rounded-full ${isConnecting ? 'bg-zinc-500' : 'bg-[#ff5aa8] shadow-[0_0_8px_#ff5aa8]'}`} />
-          <h1 className="text-xl font-semibold text-white tracking-tight">Agent Swarm</h1>
+          {/* <h1 className="text-xl font-semibold text-white tracking-tight">Agent Swarm</h1>*/}
           <span className="text-xs text-zinc-500 border border-zinc-800 rounded-full px-2 py-0.5 bg-zinc-900/50">v1.0</span>
         </div>
         
