@@ -12,6 +12,7 @@ import (
 
 type Config struct {
 	BackboardAPIKey string
+	JinaAPIKey      string
 	BaseURL         string
 	LLMProvider     string
 	ModelName       string
@@ -30,6 +31,7 @@ func Load() (Config, error) {
 
 	cfg := Config{
 		BackboardAPIKey: strings.TrimSpace(os.Getenv("BACKBOARD_API_KEY")),
+		JinaAPIKey:      strings.TrimSpace(os.Getenv("JINA_API_KEY")),
 		BaseURL:         getenvDefault("BACKBOARD_BASE_URL", "https://app.backboard.io/api"),
 		LLMProvider:     getenvDefault("BACKBOARD_LLM_PROVIDER", "openai"),
 		ModelName:       getenvDefault("BACKBOARD_MODEL_NAME", "gpt-4o"),

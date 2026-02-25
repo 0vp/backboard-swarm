@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"backboard-swarm/be/internal/backboard"
 	"backboard-swarm/be/internal/runtime"
@@ -16,12 +17,14 @@ type EventEmitter interface {
 }
 
 type ExecutionContext struct {
-	RunID         string
-	AgentID       string
-	Role          types.Role
-	WorkspaceRoot string
-	Todos         *runtime.TodoStore
-	Emitter       EventEmitter
+	RunID          string
+	AgentID        string
+	Role           types.Role
+	WorkspaceRoot  string
+	JinaAPIKey     string
+	RequestTimeout time.Duration
+	Todos          *runtime.TodoStore
+	Emitter        EventEmitter
 
 	FinishSummary string
 }

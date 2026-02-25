@@ -148,12 +148,14 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 			}
 
 			execCtx := &tools.ExecutionContext{
-				RunID:         in.RunID,
-				AgentID:       in.AgentID,
-				Role:          role,
-				WorkspaceRoot: r.cfg.WorkspaceRoot,
-				Todos:         r.todos,
-				Emitter:       r.events,
+				RunID:          in.RunID,
+				AgentID:        in.AgentID,
+				Role:           role,
+				WorkspaceRoot:  r.cfg.WorkspaceRoot,
+				JinaAPIKey:     r.cfg.JinaAPIKey,
+				RequestTimeout: r.cfg.RequestTimeout,
+				Todos:          r.todos,
+				Emitter:        r.events,
 			}
 
 			outputs := make([]backboard.ToolOutput, 0, len(resp.ToolCalls))

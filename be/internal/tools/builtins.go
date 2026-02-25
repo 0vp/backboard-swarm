@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -54,6 +57,26 @@ func RegisterBuiltins(r *Registry) {
 			"path":    map[string]any{"type": "string", "description": "Base path. Defaults to workspace root."},
 		}, []string{"pattern"}),
 		Handler: globTool,
+	})
+
+	r.RegisterBuiltin(Registration{
+		Name:        "websearch",
+		Description: "Search the web using Jina and return SERP content",
+		Parameters: objectSchema(map[string]any{
+			"query":     map[string]any{"type": "string"},
+			"max_bytes": map[string]any{"type": "integer", "description": "Optional max bytes to return", "default": 30000},
+		}, []string{"query"}),
+		Handler: webSearchTool,
+	})
+
+	r.RegisterBuiltin(Registration{
+		Name:        "web_fetch",
+		Description: "Fetch a web page through Jina Reader and return markdown",
+		Parameters: objectSchema(map[string]any{
+			"url":       map[string]any{"type": "string", "description": "HTTP(S) URL to fetch"},
+			"max_bytes": map[string]any{"type": "integer", "description": "Optional max bytes to return", "default": 40000},
+		}, []string{"url"}),
+		Handler: webFetchTool,
 	})
 
 	r.RegisterBuiltin(Registration{
@@ -237,6 +260,114 @@ func globTool(_ context.Context, args map[string]any, execCtx *ExecutionContext)
 		return nil, err
 	}
 	return map[string]any{"pattern": globPattern, "matches": results}, nil
+}
+
+func webSearchTool(ctx context.Context, args map[string]any, execCtx *ExecutionContext) (any, error) {
+	query := strings.TrimSpace(getString(args, "query", ""))
+	if query == "" {
+		return nil, errors.New("query is required")
+	}
+	if strings.TrimSpace(execCtx.JinaAPIKey) == "" {
+		return nil, errors.New("JINA_API_KEY is required for websearch")
+	}
+
+	maxBytes := getInt(args, "max_bytes", 30000)
+	endpoint := "https://s.jina.ai/?q=" + url.QueryEscape(query)
+	body, statusCode, truncated, err := jinaRequest(ctx, endpoint, execCtx.JinaAPIKey, execCtx.RequestTimeout, map[string]string{"X-Respond-With": "no-content"}, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"query":       query,
+		"status_code": statusCode,
+		"content":     body,
+		"truncated":   truncated,
+	}, nil
+}
+
+func webFetchTool(ctx context.Context, args map[string]any, execCtx *ExecutionContext) (any, error) {
+	rawURL := strings.TrimSpace(getString(args, "url", ""))
+	if rawURL == "" {
+		return nil, errors.New("url is required")
+	}
+	if strings.TrimSpace(execCtx.JinaAPIKey) == "" {
+		return nil, errors.New("JINA_API_KEY is required for web_fetch")
+	}
+	if _, err := validateHTTPURL(rawURL); err != nil {
+		return nil, err
+	}
+
+	maxBytes := getInt(args, "max_bytes", 40000)
+	endpoint := "https://r.jina.ai/" + rawURL
+	body, statusCode, truncated, err := jinaRequest(ctx, endpoint, execCtx.JinaAPIKey, execCtx.RequestTimeout, nil, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"url":         rawURL,
+		"status_code": statusCode,
+		"markdown":    body,
+		"truncated":   truncated,
+	}, nil
+}
+
+func jinaRequest(ctx context.Context, endpoint, apiKey string, timeout time.Duration, extraHeaders map[string]string, maxBytes int) (string, int, bool, error) {
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+	if maxBytes <= 0 {
+		maxBytes = 20000
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", 0, false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	for k, v := range extraHeaders {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := (&http.Client{Timeout: timeout}).Do(req)
+	if err != nil {
+		return "", 0, false, err
+	}
+	defer resp.Body.Close()
+
+	limited := io.LimitReader(resp.Body, int64(maxBytes+1))
+	b, err := io.ReadAll(limited)
+	if err != nil {
+		return "", resp.StatusCode, false, err
+	}
+	truncated := len(b) > maxBytes
+	if truncated {
+		b = b[:maxBytes]
+	}
+
+	content := string(b)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if len(content) > 220 {
+			content = content[:220] + "..."
+		}
+		return "", resp.StatusCode, false, fmt.Errorf("jina request failed (%d): %s", resp.StatusCode, content)
+	}
+	return content, resp.StatusCode, truncated, nil
+}
+
+func validateHTTPURL(raw string) (*url.URL, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid url: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, errors.New("url must start with http:// or https://")
+	}
+	if strings.TrimSpace(u.Host) == "" {
+		return nil, errors.New("url host is required")
+	}
+	return u, nil
 }
 
 func messageTool(_ context.Context, args map[string]any, execCtx *ExecutionContext) (any, error) {
