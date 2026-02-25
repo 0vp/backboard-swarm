@@ -87,6 +87,10 @@ func workspaceRoot() string {
 	if v != "" {
 		return v
 	}
+	v = strings.TrimSpace(os.Getenv("SWARM_DEFAULT_DIR"))
+	if v != "" {
+		return v
+	}
 	wd, err := os.Getwd()
 	if err != nil {
 		return "."
