@@ -18,21 +18,41 @@ import {
   Search,
   MessageSquare
 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import Dither from '../components/art/Dither'
 
 const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
 const API_URL = '/tasks'
 
+const stringifyContent = (value) => {
+  if (typeof value === 'string') return value
+  if (value == null) return ''
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+const MarkdownMessage = ({ content, className = '' }) => (
+  <div className={`whitespace-normal break-words [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:border [&_pre]:border-zinc-700 [&_pre]:bg-zinc-950/70 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-zinc-900 [&_code]:px-1 [&_code]:py-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-[#ff5aa8] [&_blockquote]:pl-3 ${className}`}>
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      {stringifyContent(content)}
+    </ReactMarkdown>
+  </div>
+)
+
 const getToolIcon = (toolName) => {
   if (!toolName) return <Activity className="w-4 h-4" />
   const lower = toolName.toLowerCase()
-  if (lower.includes('read') || lower.includes('view')) return <FileText className="w-4 h-4 text-orange-400" />
-  if (lower.includes('list') || lower.includes('ls')) return <FolderOpen className="w-4 h-4 text-orange-400" />
-  if (lower.includes('patch') || lower.includes('write')) return <Code className="w-4 h-4 text-orange-400" />
-  if (lower.includes('exec') || lower.includes('run')) return <Terminal className="w-4 h-4 text-orange-400" />
-  if (lower.includes('search')) return <Search className="w-4 h-4 text-orange-400" />
-  if (lower.includes('web')) return <Globe className="w-4 h-4 text-orange-400" />
-  return <Activity className="w-4 h-4 text-orange-400" />
+  if (lower.includes('read') || lower.includes('view')) return <FileText className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('list') || lower.includes('ls')) return <FolderOpen className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('patch') || lower.includes('write')) return <Code className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('exec') || lower.includes('run')) return <Terminal className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('search')) return <Search className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('web')) return <Globe className="w-4 h-4 text-[#ff5aa8]" />
+  return <Activity className="w-4 h-4 text-[#ff5aa8]" />
 }
 
 const getToolLabel = (toolName, message) => {
@@ -41,7 +61,8 @@ const getToolLabel = (toolName, message) => {
   label = label.charAt(0).toUpperCase() + label.slice(1)
   
   // try to extract some useful path or argument info if possible from message
-  const match = message.match(/args=\{([^}]+)\}/)
+  const rawMessage = stringifyContent(message)
+  const match = rawMessage.match(/args=\{([^}]+)\}/)
   if (match) {
     try {
       const args = match[1]
@@ -57,6 +78,7 @@ const ToolCallNode = ({ event, results }) => {
   const resultEvent = results.find(r => r.Meta?.tool_index === event.Meta?.tool_index)
   const isFinished = !!resultEvent
   const isError = resultEvent?.Status === 'error'
+  const agentLabel = event.AgentID || 'unknown-agent'
 
   return (
     <div className="flex flex-col ml-6 my-1">
@@ -69,29 +91,36 @@ const ToolCallNode = ({ event, results }) => {
         </div>
         {getToolIcon(event.ToolName)}
         <span className="text-sm font-medium">{getToolLabel(event.ToolName, event.Message)}</span>
+        <span className="ml-2 rounded-full border border-[#ff5aa8]/40 bg-[#ff5aa8]/10 px-2 py-0.5 text-[10px] font-medium text-[#ff8ec8]">
+          {agentLabel}
+        </span>
         
         {isFinished ? (
           isError ? <XCircle className="w-3 h-3 text-red-500 ml-2" /> : <CheckCircle2 className="w-3 h-3 text-green-500 ml-2" />
         ) : (
-          <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse ml-2" />
+          <span className="w-2 h-2 rounded-full bg-[#ff5aa8] animate-pulse ml-2 shadow-[0_0_8px_rgba(255,90,168,0.7)]" />
         )}
       </div>
 
       {expanded && (
         <div className="ml-6 pl-2 border-l-2 border-zinc-800 my-1 font-mono text-xs text-zinc-400 space-y-2">
           <div>
+            <span className="text-zinc-500">Agent: </span>
+            <span className="text-[#ff8ec8]">{agentLabel}</span>
+          </div>
+          <div>
             <span className="text-zinc-500">Command: </span>
             <span className="text-zinc-300">{event.ToolName}</span>
           </div>
           <div>
             <span className="text-zinc-500">Details: </span>
-            <span className="text-zinc-300 break-all">{event.Message}</span>
+            <MarkdownMessage content={event.Message} className="text-zinc-300 break-all" />
           </div>
           {isFinished && (
             <div>
               <span className="text-zinc-500">{isError ? 'Error:' : 'Output:'} </span>
-              <div className="bg-zinc-900 p-2 rounded mt-1 border border-zinc-800 overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
-                {resultEvent.Message}
+              <div className="bg-zinc-900 p-2 rounded mt-1 border border-zinc-800 overflow-x-auto max-h-40 overflow-y-auto">
+                <MarkdownMessage content={resultEvent.Message} className="text-zinc-200" />
               </div>
             </div>
           )}
@@ -122,7 +151,7 @@ const AgentRunMessage = ({ run }) => {
             {isFinished ? (
               isError ? <XCircle className="w-5 h-5 text-red-500" /> : <CheckCircle2 className="w-5 h-5 text-green-500" />
             ) : (
-              <div className="w-3 h-3 mt-1 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
+              <div className="w-3 h-3 mt-1 rounded-full bg-[#ff5aa8] animate-pulse shadow-[0_0_8px_rgba(255,90,168,0.7)]" />
             )}
           </div>
           
@@ -152,11 +181,11 @@ const AgentRunMessage = ({ run }) => {
           )}
 
           {summaryEvent && (
-            <div className="mt-4 bg-[#1A1A1A] rounded-lg p-4 text-sm text-zinc-300 whitespace-pre-wrap border border-zinc-800">
+            <div className="mt-4 bg-[#1A1A1A] rounded-lg p-4 text-sm text-zinc-300 border border-zinc-800">
               <div className="flex items-center gap-2 mb-2 text-[#ff5aa8] font-medium">
                 <Bot className="w-4 h-4" /> Final Summary
               </div>
-              {summaryEvent.Message}
+              <MarkdownMessage content={summaryEvent.Message} className="text-zinc-300" />
             </div>
           )}
         </div>
@@ -227,7 +256,19 @@ export default function Agent() {
 
     ws.onmessage = (msg) => {
       try {
-        const event = JSON.parse(msg.data)
+        const rawEvent = JSON.parse(msg.data)
+        const event = {
+          ...rawEvent,
+          Type: rawEvent.Type ?? rawEvent.type,
+          RunID: rawEvent.RunID ?? rawEvent.run_id,
+          AgentID: rawEvent.AgentID ?? rawEvent.agent_id,
+          Role: rawEvent.Role ?? rawEvent.role,
+          Status: rawEvent.Status ?? rawEvent.status,
+          Message: rawEvent.Message ?? rawEvent.message,
+          ToolName: rawEvent.ToolName ?? rawEvent.tool_name,
+          Timestamp: rawEvent.Timestamp ?? rawEvent.timestamp,
+          Meta: rawEvent.Meta ?? rawEvent.meta,
+        }
         
         setRuns(prev => {
           const newRuns = [...prev]
