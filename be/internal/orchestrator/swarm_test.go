@@ -58,3 +58,5 @@ func (f *fakeRunner) RunTask(_ context.Context, in agent.TaskInput) (agent.TaskR
 	f.mu.Unlock()
 	return agent.TaskResult{Summary: fmt.Sprintf("done-%s", in.Task)}, nil
 }
+
+func (f *fakeRunner) EndRun(_ string) {}

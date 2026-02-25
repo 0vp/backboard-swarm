@@ -19,6 +19,7 @@ type EventSink interface {
 
 type TaskRunner interface {
 	RunTask(ctx context.Context, in agent.TaskInput) (agent.TaskResult, error)
+	EndRun(runID string)
 }
 
 type Swarm struct {
@@ -32,6 +33,8 @@ func NewSwarm(runner TaskRunner, cfg config.Config, events EventSink) *Swarm {
 }
 
 func (s *Swarm) Run(ctx context.Context, runID, task string) (string, error) {
+	defer s.runner.EndRun(runID)
+
 	s.emit(types.Event{
 		Type:      "swarm_started",
 		RunID:     runID,
@@ -65,6 +68,15 @@ Rules:
 	if len(subtasks) == 0 {
 		subtasks = []types.Subtask{{Role: types.RoleCoder, Task: task}}
 	}
+	s.emit(types.Event{
+		Type:      "agent_status",
+		RunID:     runID,
+		AgentID:   "agent-0",
+		Role:      types.RoleOrchestrator,
+		Status:    "plan_ready",
+		Message:   fmt.Sprintf("decomposed into %d subtask(s)", len(subtasks)),
+		Timestamp: time.Now().UTC(),
+	})
 
 	results := s.runSubtasks(ctx, runID, subtasks)
 
@@ -85,7 +97,7 @@ Rules:
 
 	final, err := s.runner.RunTask(ctx, agent.TaskInput{
 		RunID:   runID,
-		AgentID: "agent-final",
+		AgentID: "agent-0",
 		Role:    types.RoleOrchestrator,
 		Task:    builder.String(),
 	})

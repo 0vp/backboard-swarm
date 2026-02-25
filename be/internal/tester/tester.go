@@ -57,6 +57,9 @@ func Run(ctx context.Context, serverURL, task string, out io.Writer) error {
 				continue
 			}
 			switch evt.Type {
+			case "swarm_started":
+				fmt.Fprintf(out, "[system] swarm: %s\n", strings.TrimSpace(evt.Message))
+
 			case "agent_started", "agent_status", "tool_call", "tool_result", "agent_finished":
 				agentID := evt.AgentID
 				if agentID == "" {
@@ -72,13 +75,7 @@ func Run(ctx context.Context, serverURL, task string, out io.Writer) error {
 				if role == "" {
 					role = "system"
 				}
-				msg := strings.TrimSpace(evt.Message)
-				if msg == "" {
-					msg = strings.TrimSpace(evt.Status)
-				}
-				if evt.ToolName != "" {
-					msg = fmt.Sprintf("%s (%s)", msg, evt.ToolName)
-				}
+				msg := renderEventMessage(evt)
 				fmt.Fprintf(out, "[%s] agent %d: %s\n", role, ord, msg)
 
 			case "swarm_finished":
@@ -90,6 +87,58 @@ func Run(ctx context.Context, serverURL, task string, out io.Writer) error {
 			}
 		}
 	}
+}
+
+func renderEventMessage(evt types.Event) string {
+	msg := strings.TrimSpace(evt.Message)
+	if msg == "" {
+		msg = strings.TrimSpace(evt.Status)
+	}
+	if evt.ToolName != "" {
+		msg = fmt.Sprintf("%s (%s)", msg, evt.ToolName)
+	}
+	if iteration, ok := getIntMeta(evt.Meta, "iteration"); ok {
+		if maxIter, ok := getIntMeta(evt.Meta, "max_iterations"); ok {
+			msg = fmt.Sprintf("%s [iter %d/%d]", msg, iteration, maxIter)
+		}
+	}
+	if threadID, ok := getStringMeta(evt.Meta, "thread_id"); ok && evt.Type == "agent_started" {
+		msg = fmt.Sprintf("%s [thread=%s]", msg, threadID)
+	}
+	return strings.TrimSpace(msg)
+}
+
+func getIntMeta(meta map[string]any, key string) (int, bool) {
+	if meta == nil {
+		return 0, false
+	}
+	v, ok := meta[key]
+	if !ok {
+		return 0, false
+	}
+	switch t := v.(type) {
+	case float64:
+		return int(t), true
+	case int:
+		return t, true
+	default:
+		return 0, false
+	}
+}
+
+func getStringMeta(meta map[string]any, key string) (string, bool) {
+	if meta == nil {
+		return "", false
+	}
+	v, ok := meta[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return "", false
+	}
+	return s, true
 }
 
 func readEvents(conn *websocket.Conn, events chan<- types.Event, errs chan<- error) {

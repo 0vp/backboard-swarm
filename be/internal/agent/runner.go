@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -39,7 +40,15 @@ type Runner struct {
 	prompts    PromptStore
 	events     EventSink
 
-	ensureMu sync.Mutex
+	ensureMu   sync.Mutex
+	sessionMu  sync.Mutex
+	sessions   map[string]agentSession
+	retryLimit int
+}
+
+type agentSession struct {
+	AssistantID string
+	ThreadID    string
 }
 
 func NewRunner(
@@ -59,32 +68,48 @@ func NewRunner(
 		todos:      todos,
 		prompts:    prompts,
 		events:     events,
+		sessions:   make(map[string]agentSession),
+		retryLimit: 3,
 	}
 }
 
 func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) {
 	role := in.Role.Normalize()
-	r.emit(types.Event{
-		Type:      "agent_started",
-		RunID:     in.RunID,
-		AgentID:   in.AgentID,
-		Role:      role,
-		Message:   "starting",
-		Timestamp: time.Now().UTC(),
-	})
-
-	assistantID, err := r.ensureAssistant(ctx, role)
+	session, created, err := r.getOrCreateSession(ctx, in.RunID, in.AgentID, role)
 	if err != nil {
 		return TaskResult{}, err
 	}
-
-	thread, err := r.client.CreateThread(ctx, assistantID)
-	if err != nil {
-		return TaskResult{}, fmt.Errorf("create thread: %w", err)
+	if created {
+		r.emit(types.Event{
+			Type:      "agent_started",
+			RunID:     in.RunID,
+			AgentID:   in.AgentID,
+			Role:      role,
+			Message:   fmt.Sprintf("starting (assistant=%s thread=%s)", session.AssistantID, session.ThreadID),
+			Timestamp: time.Now().UTC(),
+			Meta: map[string]any{
+				"assistant_id": session.AssistantID,
+				"thread_id":    session.ThreadID,
+			},
+		})
+	} else {
+		r.emit(types.Event{
+			Type:      "agent_status",
+			RunID:     in.RunID,
+			AgentID:   in.AgentID,
+			Role:      role,
+			Status:    "session_reuse",
+			Message:   fmt.Sprintf("continuing on existing thread %s", session.ThreadID),
+			Timestamp: time.Now().UTC(),
+			Meta: map[string]any{
+				"assistant_id": session.AssistantID,
+				"thread_id":    session.ThreadID,
+			},
+		})
 	}
 
-	resp, err := r.client.AddMessage(ctx, backboard.AddMessageRequest{
-		ThreadID:    thread.ThreadID,
+	resp, err := r.addMessageWithRetry(ctx, in, role, backboard.AddMessageRequest{
+		ThreadID:    session.ThreadID,
 		Content:     in.Task,
 		LLMProvider: r.cfg.LLMProvider,
 		ModelName:   r.cfg.ModelName,
@@ -99,17 +124,24 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 
 	finishSummary := ""
 	for i := 0; i < r.cfg.MaxIterations; i++ {
+		status := normalizeStatus(resp.Status)
 		r.emit(types.Event{
 			Type:      "agent_status",
 			RunID:     in.RunID,
 			AgentID:   in.AgentID,
 			Role:      role,
-			Status:    normalizeStatus(resp.Status),
+			Status:    status,
 			Message:   statusMessage(resp),
 			Timestamp: time.Now().UTC(),
+			Meta: map[string]any{
+				"iteration":      i + 1,
+				"max_iterations": r.cfg.MaxIterations,
+				"tool_calls":     len(resp.ToolCalls),
+				"thread_id":      session.ThreadID,
+			},
 		})
 
-		switch normalizeStatus(resp.Status) {
+		switch status {
 		case backboard.StatusRequiresAction:
 			if len(resp.ToolCalls) == 0 {
 				return TaskResult{}, fmt.Errorf("requires action with no tool calls")
@@ -126,15 +158,20 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 
 			outputs := make([]backboard.ToolOutput, 0, len(resp.ToolCalls))
 			finished := false
-			for _, call := range resp.ToolCalls {
+			for idx, call := range resp.ToolCalls {
+				argsPreview := r.toolArgsPreview(call)
 				r.emit(types.Event{
 					Type:      "tool_call",
 					RunID:     in.RunID,
 					AgentID:   in.AgentID,
 					Role:      role,
 					ToolName:  call.Function.Name,
-					Message:   "executing tool",
+					Message:   fmt.Sprintf("executing tool %d/%d%s", idx+1, len(resp.ToolCalls), argsPreview),
 					Timestamp: time.Now().UTC(),
+					Meta: map[string]any{
+						"tool_index": idx + 1,
+						"tool_total": len(resp.ToolCalls),
+					},
 				})
 
 				out, isFinish, summary, execErr := r.registry.Execute(ctx, call, execCtx)
@@ -146,8 +183,11 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 						Role:      role,
 						ToolName:  call.Function.Name,
 						Status:    "error",
-						Message:   execErr.Error(),
+						Message:   fmt.Sprintf("tool failed: %v", execErr),
 						Timestamp: time.Now().UTC(),
+						Meta: map[string]any{
+							"output_preview": truncate(out.Output, 220),
+						},
 					})
 				} else {
 					r.emit(types.Event{
@@ -157,8 +197,11 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 						Role:      role,
 						ToolName:  call.Function.Name,
 						Status:    "ok",
-						Message:   "tool executed",
+						Message:   fmt.Sprintf("tool executed, output=%s", truncate(out.Output, 220)),
 						Timestamp: time.Now().UTC(),
+						Meta: map[string]any{
+							"output_preview": truncate(out.Output, 220),
+						},
 					})
 				}
 				outputs = append(outputs, out)
@@ -168,7 +211,7 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 				}
 			}
 
-			resp, err = r.client.SubmitToolOutputs(ctx, thread.ThreadID, resp.RunID, outputs)
+			resp, err = r.submitToolOutputsWithRetry(ctx, in, role, session.ThreadID, resp.RunID, outputs)
 			if err != nil {
 				return TaskResult{}, fmt.Errorf("submit tool outputs: %w", err)
 			}
@@ -195,6 +238,47 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 	}
 
 	return TaskResult{}, fmt.Errorf("agent exceeded max iterations (%d)", r.cfg.MaxIterations)
+}
+
+func (r *Runner) EndRun(runID string) {
+	r.sessionMu.Lock()
+	defer r.sessionMu.Unlock()
+	prefix := runID + "::"
+	for k := range r.sessions {
+		if strings.HasPrefix(k, prefix) {
+			delete(r.sessions, k)
+		}
+	}
+}
+
+func (r *Runner) getOrCreateSession(ctx context.Context, runID, agentID string, role types.Role) (agentSession, bool, error) {
+	key := sessionKey(runID, agentID)
+	r.sessionMu.Lock()
+	if s, ok := r.sessions[key]; ok {
+		r.sessionMu.Unlock()
+		return s, false, nil
+	}
+	r.sessionMu.Unlock()
+
+	assistantID, err := r.ensureAssistant(ctx, role)
+	if err != nil {
+		return agentSession{}, false, err
+	}
+
+	thread, err := r.client.CreateThread(ctx, assistantID)
+	if err != nil {
+		return agentSession{}, false, fmt.Errorf("create thread: %w", err)
+	}
+
+	s := agentSession{AssistantID: assistantID, ThreadID: thread.ThreadID}
+	r.sessionMu.Lock()
+	r.sessions[key] = s
+	r.sessionMu.Unlock()
+	return s, true, nil
+}
+
+func sessionKey(runID, agentID string) string {
+	return runID + "::" + agentID
 }
 
 func (r *Runner) ensureAssistant(ctx context.Context, role types.Role) (string, error) {
@@ -228,16 +312,121 @@ func normalizeStatus(status string) string {
 }
 
 func statusMessage(resp backboard.MessageResponse) string {
+	status := normalizeStatus(resp.Status)
+	if status == backboard.StatusRequiresAction && len(resp.ToolCalls) > 0 {
+		return fmt.Sprintf("requested %d tool call(s)", len(resp.ToolCalls))
+	}
 	if strings.TrimSpace(resp.Content) != "" {
 		return resp.Content
-	}
-	if len(resp.ToolCalls) > 0 {
-		return fmt.Sprintf("requested %d tool call(s)", len(resp.ToolCalls))
 	}
 	if resp.Message != "" {
 		return resp.Message
 	}
 	return "processing"
+}
+
+func (r *Runner) addMessageWithRetry(ctx context.Context, in TaskInput, role types.Role, req backboard.AddMessageRequest) (backboard.MessageResponse, error) {
+	var lastErr error
+	for attempt := 1; attempt <= r.retryLimit; attempt++ {
+		resp, err := r.client.AddMessage(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if !isTransient(err) || attempt == r.retryLimit {
+			break
+		}
+		delay := time.Duration(attempt) * 800 * time.Millisecond
+		r.emit(types.Event{
+			Type:      "agent_status",
+			RunID:     in.RunID,
+			AgentID:   in.AgentID,
+			Role:      role,
+			Status:    "retrying",
+			Message:   fmt.Sprintf("add_message transient failure (attempt %d/%d): %v; retrying in %s", attempt, r.retryLimit, err, delay),
+			Timestamp: time.Now().UTC(),
+		})
+		select {
+		case <-ctx.Done():
+			return backboard.MessageResponse{}, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	return backboard.MessageResponse{}, lastErr
+}
+
+func (r *Runner) submitToolOutputsWithRetry(ctx context.Context, in TaskInput, role types.Role, threadID, runID string, outputs []backboard.ToolOutput) (backboard.MessageResponse, error) {
+	var lastErr error
+	for attempt := 1; attempt <= r.retryLimit; attempt++ {
+		resp, err := r.client.SubmitToolOutputs(ctx, threadID, runID, outputs)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if !isTransient(err) || attempt == r.retryLimit {
+			break
+		}
+		delay := time.Duration(attempt) * 800 * time.Millisecond
+		r.emit(types.Event{
+			Type:      "agent_status",
+			RunID:     in.RunID,
+			AgentID:   in.AgentID,
+			Role:      role,
+			Status:    "retrying",
+			Message:   fmt.Sprintf("submit_tool_outputs transient failure (attempt %d/%d): %v; retrying in %s", attempt, r.retryLimit, err, delay),
+			Timestamp: time.Now().UTC(),
+			Meta: map[string]any{
+				"thread_id": threadID,
+				"run_id":    runID,
+			},
+		})
+		select {
+		case <-ctx.Done():
+			return backboard.MessageResponse{}, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	return backboard.MessageResponse{}, lastErr
+}
+
+func isTransient(err error) bool {
+	if err == nil {
+		return false
+	}
+	v := strings.ToLower(err.Error())
+	markers := []string{"(429)", "(500)", "(502)", "(503)", "(504)", "timeout", "temporarily", "connection reset", "broken pipe", "eof"}
+	for _, m := range markers {
+		if strings.Contains(v, m) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Runner) toolArgsPreview(call backboard.ToolCall) string {
+	args, err := call.ArgumentsMap()
+	if err != nil {
+		return ""
+	}
+	b, err := json.Marshal(args)
+	if err != nil {
+		return ""
+	}
+	if len(b) == 0 || string(b) == "{}" {
+		return ""
+	}
+	return fmt.Sprintf(" args=%s", truncate(string(b), 180))
+}
+
+func truncate(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	s = strings.TrimSpace(s)
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
 
 func (r *Runner) emit(evt types.Event) {
