@@ -147,7 +147,7 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 				return TaskResult{}, fmt.Errorf("requires action with no tool calls")
 			}
 
-			execCtx := &tools.ExecutionContext{
+			baseExecCtx := tools.ExecutionContext{
 				RunID:          in.RunID,
 				AgentID:        in.AgentID,
 				Role:           role,
@@ -158,8 +158,17 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 				Emitter:        r.events,
 			}
 
-			outputs := make([]backboard.ToolOutput, 0, len(resp.ToolCalls))
-			finished := false
+			type toolExecResult struct {
+				idx      int
+				call     backboard.ToolCall
+				out      backboard.ToolOutput
+				isFinish bool
+				summary  string
+				err      error
+			}
+
+			resultsCh := make(chan toolExecResult, len(resp.ToolCalls))
+			var wg sync.WaitGroup
 			for idx, call := range resp.ToolCalls {
 				argsPreview := r.toolArgsPreview(call)
 				r.emit(types.Event{
@@ -168,7 +177,7 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 					AgentID:   in.AgentID,
 					Role:      role,
 					ToolName:  call.Function.Name,
-					Message:   fmt.Sprintf("executing tool %d/%d%s", idx+1, len(resp.ToolCalls), argsPreview),
+					Message:   fmt.Sprintf("executing tool %d/%d in parallel%s", idx+1, len(resp.ToolCalls), argsPreview),
 					Timestamp: time.Now().UTC(),
 					Meta: map[string]any{
 						"tool_index": idx + 1,
@@ -176,19 +185,35 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 					},
 				})
 
-				out, isFinish, summary, execErr := r.registry.Execute(ctx, call, execCtx)
-				if execErr != nil {
+				wg.Add(1)
+				go func(idx int, call backboard.ToolCall) {
+					defer wg.Done()
+					execCtx := baseExecCtx
+					out, isFinish, summary, execErr := r.registry.Execute(ctx, call, &execCtx)
+					resultsCh <- toolExecResult{idx: idx, call: call, out: out, isFinish: isFinish, summary: summary, err: execErr}
+				}(idx, call)
+			}
+
+			wg.Wait()
+			close(resultsCh)
+
+			outputs := make([]backboard.ToolOutput, len(resp.ToolCalls))
+			finished := false
+			for result := range resultsCh {
+				if result.err != nil {
 					r.emit(types.Event{
 						Type:      "tool_result",
 						RunID:     in.RunID,
 						AgentID:   in.AgentID,
 						Role:      role,
-						ToolName:  call.Function.Name,
+						ToolName:  result.call.Function.Name,
 						Status:    "error",
-						Message:   fmt.Sprintf("tool failed: %v", execErr),
+						Message:   fmt.Sprintf("tool failed: %v", result.err),
 						Timestamp: time.Now().UTC(),
 						Meta: map[string]any{
-							"output_preview": truncate(out.Output, 220),
+							"tool_index":     result.idx + 1,
+							"tool_total":     len(resp.ToolCalls),
+							"output_preview": truncate(result.out.Output, 220),
 						},
 					})
 				} else {
@@ -197,19 +222,23 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 						RunID:     in.RunID,
 						AgentID:   in.AgentID,
 						Role:      role,
-						ToolName:  call.Function.Name,
+						ToolName:  result.call.Function.Name,
 						Status:    "ok",
-						Message:   fmt.Sprintf("tool executed, output=%s", truncate(out.Output, 220)),
+						Message:   fmt.Sprintf("tool executed, output=%s", truncate(result.out.Output, 220)),
 						Timestamp: time.Now().UTC(),
 						Meta: map[string]any{
-							"output_preview": truncate(out.Output, 220),
+							"tool_index":     result.idx + 1,
+							"tool_total":     len(resp.ToolCalls),
+							"output_preview": truncate(result.out.Output, 220),
 						},
 					})
 				}
-				outputs = append(outputs, out)
-				if isFinish {
+				outputs[result.idx] = result.out
+				if result.isFinish {
 					finished = true
-					finishSummary = summary
+					if finishSummary == "" {
+						finishSummary = result.summary
+					}
 				}
 			}
 

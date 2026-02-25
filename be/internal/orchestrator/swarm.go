@@ -42,17 +42,7 @@ func (s *Swarm) Run(ctx context.Context, runID, task string) (string, error) {
 		Timestamp: time.Now().UTC(),
 	})
 
-	decompositionPrompt := fmt.Sprintf(`Decompose this user task into independent parallel subtasks.
-User task:
-%s
-
-Rules:
-- Output only JSON.
-- Use schema: {"subtasks":[{"role":"researcher|fact_checker|coder","task":"..."}]}
-- Keep between 1 and 6 subtasks.
-- Only include roles researcher, fact_checker, or coder.
-- If unsure, return one coder task.
-- After preparing JSON, call the finish tool with that exact JSON string in summary.`, task)
+	decompositionPrompt := fmt.Sprintf("MODE: DECOMPOSE\n\nUSER_TASK:\n%s", task)
 
 	plan, err := s.runner.RunTask(ctx, agent.TaskInput{
 		RunID:   runID,
@@ -80,32 +70,43 @@ Rules:
 
 	results := s.runSubtasks(ctx, runID, subtasks)
 
-	var builder strings.Builder
-	builder.WriteString("Original task:\n")
-	builder.WriteString(task)
-	builder.WriteString("\n\nSubtask outputs:\n")
-	for i, res := range results {
-		builder.WriteString(fmt.Sprintf("%d) role=%s\n", i+1, res.Subtask.Role))
-		if res.Error != "" {
-			builder.WriteString("error: " + res.Error + "\n\n")
-			continue
-		}
-		builder.WriteString(res.Summary)
-		builder.WriteString("\n\n")
-	}
-	builder.WriteString("Synthesize a final response for the user. Then call finish tool with summary.")
-
 	final, err := s.runner.RunTask(ctx, agent.TaskInput{
 		RunID:   runID,
 		AgentID: "agent-0",
 		Role:    types.RoleOrchestrator,
-		Task:    builder.String(),
+		Task:    synthesisPrompt(task, results, false),
 	})
 	if err != nil {
 		return "", fmt.Errorf("synthesis failed: %w", err)
 	}
 
 	summary := strings.TrimSpace(firstNonEmpty(final.Summary, final.Raw))
+	if isDecompositionSummary(summary) {
+		s.emit(types.Event{
+			Type:      "agent_status",
+			RunID:     runID,
+			AgentID:   "agent-0",
+			Role:      types.RoleOrchestrator,
+			Status:    "resynthesizing",
+			Message:   "synthesis returned a plan; retrying with stricter final-answer instructions",
+			Timestamp: time.Now().UTC(),
+		})
+		retry, retryErr := s.runner.RunTask(ctx, agent.TaskInput{
+			RunID:   runID,
+			AgentID: "agent-0",
+			Role:    types.RoleOrchestrator,
+			Task:    synthesisPrompt(task, results, true),
+		})
+		if retryErr == nil {
+			retrySummary := strings.TrimSpace(firstNonEmpty(retry.Summary, retry.Raw))
+			if retrySummary != "" && !isDecompositionSummary(retrySummary) {
+				summary = retrySummary
+			}
+		}
+	}
+	if summary == "" || isDecompositionSummary(summary) {
+		summary = localFallbackSummary(task, results)
+	}
 	s.emit(types.Event{
 		Type:      "swarm_finished",
 		RunID:     runID,
@@ -206,6 +207,67 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func synthesisPrompt(task string, results []types.SubtaskResult, strict bool) string {
+	var builder strings.Builder
+	builder.WriteString("MODE: SYNTHESIZE\n")
+	builder.WriteString(fmt.Sprintf("RETRY_SYNTHESIS=%t\n", strict))
+	builder.WriteString("\nUSER_TASK:\n")
+	builder.WriteString(task)
+	builder.WriteString("\n\nFINDINGS:\n")
+	for i, res := range results {
+		builder.WriteString(fmt.Sprintf("%d)\n", i+1))
+		if res.Error != "" {
+			builder.WriteString("source error: " + res.Error + "\n\n")
+			continue
+		}
+		builder.WriteString(strings.TrimSpace(res.Summary))
+		builder.WriteString("\n\n")
+	}
+	builder.WriteString("\nReturn via finish.")
+	return builder.String()
+}
+
+func isDecompositionSummary(summary string) bool {
+	if len(parseSubtasks(summary)) > 0 {
+		return true
+	}
+	clean := strings.TrimSpace(summary)
+	lower := strings.ToLower(clean)
+	return (strings.HasPrefix(clean, "{") || strings.HasPrefix(clean, "```")) && strings.Contains(lower, "\"subtasks\"")
+}
+
+func localFallbackSummary(task string, results []types.SubtaskResult) string {
+	var builder strings.Builder
+	builder.WriteString("Summary for: ")
+	builder.WriteString(task)
+	builder.WriteString("\n\n")
+
+	okCount := 0
+	errCount := 0
+	for _, res := range results {
+		if res.Error != "" {
+			errCount++
+			continue
+		}
+		text := strings.TrimSpace(res.Summary)
+		if text == "" {
+			continue
+		}
+		okCount++
+		builder.WriteString("- ")
+		builder.WriteString(text)
+		builder.WriteString("\n")
+	}
+
+	if okCount == 0 {
+		builder.WriteString("No reliable findings were produced.")
+	}
+	if errCount > 0 {
+		builder.WriteString("\nSome sub-analyses failed and may affect completeness.")
+	}
+	return strings.TrimSpace(builder.String())
 }
 
 func (s *Swarm) emit(evt types.Event) {
