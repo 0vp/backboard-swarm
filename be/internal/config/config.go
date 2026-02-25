@@ -24,6 +24,7 @@ type Config struct {
 	RequestTimeout  time.Duration
 	MaxSubagents    int
 	MaxIterations   int
+	MaxOrchRounds   int
 }
 
 func Load() (Config, error) {
@@ -43,6 +44,7 @@ func Load() (Config, error) {
 		RequestTimeout:  durationDefault("WUVO_REQUEST_TIMEOUT", 120*time.Second),
 		MaxSubagents:    intDefault("WUVO_MAX_SUBAGENTS", 4),
 		MaxIterations:   intDefault("WUVO_MAX_ITERATIONS", 24),
+		MaxOrchRounds:   intDefault("WUVO_MAX_ORCH_ROUNDS", 3),
 	}
 
 	if cfg.BackboardAPIKey == "" {

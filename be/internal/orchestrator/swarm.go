@@ -42,71 +42,68 @@ func (s *Swarm) Run(ctx context.Context, runID, task string) (string, error) {
 		Timestamp: time.Now().UTC(),
 	})
 
-	decompositionPrompt := fmt.Sprintf("MODE: DECOMPOSE\n\nUSER_TASK:\n%s", task)
-
-	plan, err := s.runner.RunTask(ctx, agent.TaskInput{
-		RunID:   runID,
-		AgentID: "agent-0",
-		Role:    types.RoleOrchestrator,
-		Task:    decompositionPrompt,
-	})
+	subtasks, err := s.decompose(ctx, runID, task)
 	if err != nil {
 		return "", fmt.Errorf("decompose task: %w", err)
 	}
-
-	subtasks := parseSubtasks(firstNonEmpty(plan.Summary, plan.Raw))
 	if len(subtasks) == 0 {
 		subtasks = []types.Subtask{{Role: types.RoleCoder, Task: task}}
 	}
-	s.emit(types.Event{
-		Type:      "agent_status",
-		RunID:     runID,
-		AgentID:   "agent-0",
-		Role:      types.RoleOrchestrator,
-		Status:    "plan_ready",
-		Message:   fmt.Sprintf("decomposed into %d subtask(s)", len(subtasks)),
-		Timestamp: time.Now().UTC(),
-	})
 
-	results := s.runSubtasks(ctx, runID, subtasks)
-
-	final, err := s.runner.RunTask(ctx, agent.TaskInput{
-		RunID:   runID,
-		AgentID: "agent-0",
-		Role:    types.RoleOrchestrator,
-		Task:    synthesisPrompt(task, results, false),
-	})
-	if err != nil {
-		return "", fmt.Errorf("synthesis failed: %w", err)
+	maxRounds := s.cfg.MaxOrchRounds
+	if maxRounds <= 0 {
+		maxRounds = 3
 	}
 
-	summary := strings.TrimSpace(firstNonEmpty(final.Summary, final.Raw))
-	if isDecompositionSummary(summary) {
+	allResults := make([]types.SubtaskResult, 0, len(subtasks))
+	for round := 1; round <= maxRounds; round++ {
 		s.emit(types.Event{
 			Type:      "agent_status",
 			RunID:     runID,
 			AgentID:   "agent-0",
 			Role:      types.RoleOrchestrator,
-			Status:    "resynthesizing",
-			Message:   "synthesis returned a plan; retrying with stricter final-answer instructions",
+			Status:    "plan_ready",
+			Message:   fmt.Sprintf("round %d/%d: running %d subtask(s)", round, maxRounds, len(subtasks)),
 			Timestamp: time.Now().UTC(),
 		})
-		retry, retryErr := s.runner.RunTask(ctx, agent.TaskInput{
-			RunID:   runID,
-			AgentID: "agent-0",
-			Role:    types.RoleOrchestrator,
-			Task:    synthesisPrompt(task, results, true),
-		})
-		if retryErr == nil {
-			retrySummary := strings.TrimSpace(firstNonEmpty(retry.Summary, retry.Raw))
-			if retrySummary != "" && !isDecompositionSummary(retrySummary) {
-				summary = retrySummary
-			}
+
+		roundResults := s.runSubtasks(ctx, runID, subtasks)
+		allResults = append(allResults, roundResults...)
+
+		decision, raw, decisionErr := s.decideNextStep(ctx, runID, task, round, maxRounds, allResults)
+		if decisionErr != nil {
+			return "", fmt.Errorf("decide next step: %w", decisionErr)
 		}
+
+		if decision.Action == "decompose" && len(decision.Subtasks) > 0 && round < maxRounds {
+			subtasks = decision.Subtasks
+			s.emit(types.Event{
+				Type:      "agent_status",
+				RunID:     runID,
+				AgentID:   "agent-0",
+				Role:      types.RoleOrchestrator,
+				Status:    "refining",
+				Message:   fmt.Sprintf("round %d/%d requested deeper decomposition into %d subtask(s)", round, maxRounds, len(subtasks)),
+				Timestamp: time.Now().UTC(),
+			})
+			continue
+		}
+
+		summary := strings.TrimSpace(firstNonEmpty(decision.Summary, raw))
+		if summary == "" || isDecompositionSummary(summary) {
+			summary = localFallbackSummary(task, allResults)
+		}
+		s.emit(types.Event{
+			Type:      "swarm_finished",
+			RunID:     runID,
+			Status:    "completed",
+			Message:   summary,
+			Timestamp: time.Now().UTC(),
+		})
+		return summary, nil
 	}
-	if summary == "" || isDecompositionSummary(summary) {
-		summary = localFallbackSummary(task, results)
-	}
+
+	summary := localFallbackSummary(task, allResults)
 	s.emit(types.Event{
 		Type:      "swarm_finished",
 		RunID:     runID,
@@ -114,8 +111,49 @@ func (s *Swarm) Run(ctx context.Context, runID, task string) (string, error) {
 		Message:   summary,
 		Timestamp: time.Now().UTC(),
 	})
-
 	return summary, nil
+}
+
+func (s *Swarm) decompose(ctx context.Context, runID, task string) ([]types.Subtask, error) {
+	plan, err := s.runner.RunTask(ctx, agent.TaskInput{
+		RunID:   runID,
+		AgentID: "agent-0",
+		Role:    types.RoleOrchestrator,
+		Task:    fmt.Sprintf("MODE: DECOMPOSE\n\nUSER_TASK:\n%s", task),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseSubtasks(firstNonEmpty(plan.Summary, plan.Raw)), nil
+}
+
+type orchestrationDecision struct {
+	Action   string
+	Summary  string
+	Subtasks []types.Subtask
+}
+
+func (s *Swarm) decideNextStep(ctx context.Context, runID, task string, round, maxRounds int, results []types.SubtaskResult) (orchestrationDecision, string, error) {
+	res, err := s.runner.RunTask(ctx, agent.TaskInput{
+		RunID:   runID,
+		AgentID: "agent-0",
+		Role:    types.RoleOrchestrator,
+		Task:    decisionPrompt(task, round, maxRounds, results),
+	})
+	if err != nil {
+		return orchestrationDecision{}, "", err
+	}
+	raw := strings.TrimSpace(firstNonEmpty(res.Summary, res.Raw))
+	if raw == "" {
+		return orchestrationDecision{Action: "finalize", Summary: ""}, raw, nil
+	}
+	if d, ok := parseDecision(raw); ok {
+		return d, raw, nil
+	}
+	if subtasks := parseSubtasks(raw); len(subtasks) > 0 {
+		return orchestrationDecision{Action: "decompose", Subtasks: subtasks}, raw, nil
+	}
+	return orchestrationDecision{Action: "finalize", Summary: raw}, raw, nil
 }
 
 func (s *Swarm) runSubtasks(ctx context.Context, runID string, subtasks []types.Subtask) []types.SubtaskResult {
@@ -209,24 +247,67 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func synthesisPrompt(task string, results []types.SubtaskResult, strict bool) string {
+func decisionPrompt(task string, round, maxRounds int, results []types.SubtaskResult) string {
 	var builder strings.Builder
-	builder.WriteString("MODE: SYNTHESIZE\n")
-	builder.WriteString(fmt.Sprintf("RETRY_SYNTHESIS=%t\n", strict))
+	builder.WriteString("MODE: DECIDE_NEXT_STEP\n")
+	builder.WriteString(fmt.Sprintf("ROUND=%d\n", round))
+	builder.WriteString(fmt.Sprintf("MAX_ROUNDS=%d\n", maxRounds))
 	builder.WriteString("\nUSER_TASK:\n")
 	builder.WriteString(task)
-	builder.WriteString("\n\nFINDINGS:\n")
+	builder.WriteString("\n\nCURRENT_FINDINGS:\n")
 	for i, res := range results {
-		builder.WriteString(fmt.Sprintf("%d)\n", i+1))
+		builder.WriteString(fmt.Sprintf("%d) role=%s\n", i+1, res.Subtask.Role))
+		builder.WriteString("task: " + strings.TrimSpace(res.Subtask.Task) + "\n")
 		if res.Error != "" {
-			builder.WriteString("source error: " + res.Error + "\n\n")
+			builder.WriteString("error: " + res.Error + "\n\n")
 			continue
 		}
-		builder.WriteString(strings.TrimSpace(res.Summary))
+		builder.WriteString("result: " + strings.TrimSpace(res.Summary))
 		builder.WriteString("\n\n")
 	}
 	builder.WriteString("\nReturn via finish.")
 	return builder.String()
+}
+
+func parseDecision(raw string) (orchestrationDecision, bool) {
+	clean := strings.TrimSpace(raw)
+	if clean == "" {
+		return orchestrationDecision{}, false
+	}
+	clean = strings.TrimPrefix(clean, "```json")
+	clean = strings.TrimPrefix(clean, "```")
+	clean = strings.TrimSuffix(clean, "```")
+	clean = strings.TrimSpace(clean)
+
+	var parsed struct {
+		Action   string          `json:"action"`
+		Summary  string          `json:"summary"`
+		Subtasks []types.Subtask `json:"subtasks"`
+	}
+	if err := json.Unmarshal([]byte(clean), &parsed); err != nil {
+		return orchestrationDecision{}, false
+	}
+
+	action := strings.ToLower(strings.TrimSpace(parsed.Action))
+	subtasks := normalizeSubtasks(parsed.Subtasks)
+	summary := strings.TrimSpace(parsed.Summary)
+
+	switch action {
+	case "decompose", "refine", "delegate":
+		if len(subtasks) > 0 {
+			return orchestrationDecision{Action: "decompose", Subtasks: subtasks}, true
+		}
+	case "finalize", "finish", "summary":
+		return orchestrationDecision{Action: "finalize", Summary: summary}, true
+	}
+
+	if len(subtasks) > 0 {
+		return orchestrationDecision{Action: "decompose", Subtasks: subtasks}, true
+	}
+	if summary != "" {
+		return orchestrationDecision{Action: "finalize", Summary: summary}, true
+	}
+	return orchestrationDecision{}, false
 }
 
 func isDecompositionSummary(summary string) bool {

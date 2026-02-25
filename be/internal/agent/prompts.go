@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"backboard-swarm/be/internal/types"
 )
@@ -32,7 +34,13 @@ func LoadPrompts(root string) (PromptStore, error) {
 
 func (p PromptStore) For(role types.Role) string {
 	if v, ok := p.byRole[role.Normalize()]; ok {
-		return v
+		return withRuntimePromptVars(v)
 	}
-	return p.byRole[types.RoleCoder]
+	return withRuntimePromptVars(p.byRole[types.RoleCoder])
+}
+
+func withRuntimePromptVars(prompt string) string {
+	today := time.Now().Format("2006-01-02")
+	prompt = strings.ReplaceAll(prompt, "{{TODAY_DATE}}", today)
+	return prompt
 }
