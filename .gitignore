@@ -5,6 +5,7 @@ __MACOSX/
 .LSOverride
 Icon[
 ]
+node_modules/
 
 # Thumbnails
 ._*
