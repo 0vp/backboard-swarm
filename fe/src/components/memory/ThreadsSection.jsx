@@ -255,7 +255,7 @@ function ThreadsSection() {
                           <button
                             type="button"
                             onClick={() => onSendMessage(thread.id)}
-                            className="rounded bg-zinc-200 px-4 py-2 text-sm font-medium text-black hover:bg-white"
+                            className="purple-gradient-button rounded px-4 py-2 text-sm font-medium"
                           >
                             Send
                           </button>

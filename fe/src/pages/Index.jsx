@@ -34,12 +34,12 @@ function Index() {
         
         <div className="flex items-center gap-4 pointer-events-auto animate-diagonal-fade-in" style={{ animationDelay: '300ms' }}>
           <button 
-            className="bg-white text-black px-5 py-2 text-sm rounded-full font-medium hover:bg-zinc-200 transition-all cursor-pointer shadow-[0_0_15px_rgba(255,255,255,0.3)] hover:shadow-[0_0_20px_rgba(255,255,255,0.5)]"
+            className="purple-gradient-button px-5 py-2 text-sm rounded-full font-medium transition-all cursor-pointer"
             onClick={() => navigate('/agent')}>
             Get Started
           </button>
           <button 
-            className="bg-transparent text-white px-5 py-2 text-sm rounded-full font-medium hover:bg-zinc-800 transition-colors border border-zinc-700 cursor-pointer"
+            className="black-gradient-button text-white hover:text-white px-5 py-2 text-sm rounded-full font-medium transition-colors border border-zinc-700 cursor-pointer"
           >
             See Benchmarks
           </button>

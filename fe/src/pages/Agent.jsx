@@ -37,8 +37,8 @@ function Agent() {
             onClick={() => setActiveTab(tab.id)}
             className={`px-5 py-2 text-sm rounded-full font-medium transition-all cursor-pointer ${
               activeTab === tab.id
-                ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.3)]'
-                : 'bg-transparent text-white hover:bg-zinc-800 border border-zinc-700'
+                ? 'purple-gradient-button'
+                : 'black-gradient-button border border-zinc-700'
             }`}
           >
             {tab.label}

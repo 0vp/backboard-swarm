@@ -30,8 +30,8 @@ function Memory() {
             onClick={() => setActiveTab(tab.id)}
             className={`rounded px-3 py-2 text-sm border transition-colors ${
               activeTab === tab.id
-                ? 'border-zinc-200 bg-zinc-200 text-black'
-                : 'border-zinc-700 text-zinc-200 hover:bg-zinc-900'
+                ? 'purple-gradient-button border-transparent'
+                : 'black-gradient-button border-zinc-700 text-zinc-200'
             }`}
           >
             {tab.label}

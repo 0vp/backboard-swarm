@@ -31,3 +31,87 @@ body {
   background-color: #000;
   color: #fff;
 }
+
+.purple-gradient-button,
+.black-gradient-button {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  color: #fff;
+  transition: transform 0.16s ease-out;
+}
+
+.purple-gradient-button {
+  background: radial-gradient(114.65% 114.65% at 9.73% 17.27%, #ff8ec8 0, #ff5aa8 100%);
+  box-shadow:
+    0 62px 17px #d6007a00,
+    0 40px 16px #d6007a08,
+    0 22px 13px #d6007a17,
+    0 10px 10px #d6007a26,
+    0 2px 5px #d6007a2b,
+    20px 20px 24px #ff9dd266,
+    inset -3px -3px 4px #ffcce866,
+    inset 4px 4px 4px #9e00551a;
+}
+
+.purple-gradient-button::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  opacity: 0;
+  mix-blend-mode: overlay;
+  transition: opacity 0.3s ease-in-out;
+  background: radial-gradient(101.79% 101.79% at 65.61% 81.79%, #ffffff99 0, transparent 100%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.black-gradient-button {
+  background: radial-gradient(85.96% 85.96% at 9.73% 17.27%, #262830 0, #1c1d22 100%);
+  box-shadow: inset 0 0 0 1px #2f3342;
+}
+
+.black-gradient-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  filter: blur(0.3px);
+  transition: opacity 0.3s ease-in-out;
+  background:
+    radial-gradient(85.96% 85.96% at 9.73% 17.27%, #262830 0, #1c1d22 100%),
+    radial-gradient(29.9% 135.23% at 83.67% 104.55%, #ffffff1a 0, #fff0 100%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+@media (min-width: 768px) {
+  .purple-gradient-button:hover {
+    transform: scale(1.03);
+  }
+
+  .purple-gradient-button:hover::after {
+    opacity: 0.4;
+  }
+
+  .black-gradient-button:hover {
+    transform: scale(1.02);
+  }
+
+  .black-gradient-button:hover::before {
+    opacity: 1;
+  }
+}
+
+.purple-gradient-button:active,
+.black-gradient-button:active {
+  transform: scale(0.97);
+}
+
+.purple-gradient-button:focus-visible,
+.black-gradient-button:focus-visible {
+  outline: 2px solid #0b0c0e;
+  outline-offset: 2px;
+}

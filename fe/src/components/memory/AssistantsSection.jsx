@@ -387,7 +387,7 @@ function AssistantsSection() {
           className="w-full rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
         />
         <div className="flex gap-2">
-          <button type="submit" className="rounded bg-zinc-200 px-4 py-2 text-sm font-medium text-black hover:bg-white">
+          <button type="submit" className="purple-gradient-button rounded px-4 py-2 text-sm font-medium">
             {editingAssistantId ? 'Update' : 'Create'}
           </button>
           {editingAssistantId && (
@@ -397,7 +397,7 @@ function AssistantsSection() {
                 setEditingAssistantId(null)
                 setAssistantForm(emptyAssistantForm)
               }}
-              className="rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-900"
+              className="black-gradient-button rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-300"
             >
               Cancel
             </button>
@@ -453,7 +453,7 @@ function AssistantsSection() {
                 <button
                   type="button"
                   onClick={() => onEditAssistant(assistant)}
-                  className="rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-900"
+                  className="black-gradient-button rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200"
                 >
                   Edit
                 </button>
@@ -488,7 +488,7 @@ function AssistantsSection() {
                             <button
                               type="button"
                               onClick={() => onCreateThread(assistant.id)}
-                              className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-900"
+                              className="purple-gradient-button rounded border border-transparent px-2 py-1 text-xs"
                             >
                               New thread
                             </button>
@@ -598,7 +598,7 @@ function AssistantsSection() {
                             <button
                               type="button"
                               onClick={() => onSaveMemory(assistant.id)}
-                              className="rounded bg-zinc-200 px-3 py-1.5 text-xs font-medium text-black hover:bg-white"
+                              className="purple-gradient-button rounded px-3 py-1.5 text-xs font-medium"
                             >
                               Save memory
                             </button>
@@ -606,7 +606,7 @@ function AssistantsSection() {
                               <button
                                 type="button"
                                 onClick={() => onSaveMemory(assistant.id, details.memories[0].id)}
-                                className="rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-950"
+                                className="black-gradient-button rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200"
                               >
                                 Update first memory
                               </button>
