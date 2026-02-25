@@ -1,0 +1,6 @@
+{
+  "max_subagents": 4,
+  "max_iterations": 24,
+  "memory_mode": "Auto",
+  "web_search_mode": "off"
+}
