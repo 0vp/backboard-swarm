@@ -243,11 +243,21 @@ export default function Agent() {
   const [showAgents, setShowAgents] = useState(false)
   const [activeAgents, setActiveAgents] = useState([])
   const wsRef = useRef(null)
+  const reconnectTimerRef = useRef(null)
+  const shouldReconnectRef = useRef(true)
+  const seenEventsRef = useRef(new Set())
   const messagesEndRef = useRef(null)
 
   const connectWS = useCallback(() => {
+    if (!shouldReconnectRef.current) return
+    const current = wsRef.current
+    if (current && (current.readyState === WebSocket.OPEN || current.readyState === WebSocket.CONNECTING)) {
+      return
+    }
+
     setIsConnecting(true)
     const ws = new WebSocket(WS_URL)
+    wsRef.current = ws
     
     ws.onopen = () => {
       console.log('WS Connected')
@@ -256,6 +266,14 @@ export default function Agent() {
 
     ws.onmessage = (msg) => {
       try {
+        if (seenEventsRef.current.has(msg.data)) {
+          return
+        }
+        seenEventsRef.current.add(msg.data)
+        if (seenEventsRef.current.size > 5000) {
+          seenEventsRef.current.clear()
+        }
+
         const rawEvent = JSON.parse(msg.data)
         const event = {
           ...rawEvent,
@@ -317,18 +335,39 @@ export default function Agent() {
 
     ws.onclose = () => {
       console.log('WS Disconnected')
+      if (wsRef.current === ws) {
+        wsRef.current = null
+      }
       setIsConnecting(false)
-      // Attempt reconnect after delay
-      setTimeout(connectWS, 3000)
+
+      if (!shouldReconnectRef.current) {
+        return
+      }
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+      }
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null
+        connectWS()
+      }, 3000)
     }
-    
-    wsRef.current = ws
   }, [])
 
   useEffect(() => {
+    shouldReconnectRef.current = true
     connectWS()
+
     return () => {
-      if (wsRef.current) wsRef.current.close()
+      shouldReconnectRef.current = false
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
+      const ws = wsRef.current
+      wsRef.current = null
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close()
+      }
     }
   }, [connectWS])
 
