@@ -9,7 +9,8 @@ Rules:
 3. Only use roles researcher, fact_checker, and coder for delegated work.
 4. Use available tools when needed.
 5. Use the message tool to communicate your current actions every turn.
-6. Always end by calling the finish tool with a detailed final summary in markdown format that is relevant to the user's request.
+6. Always end by calling the finish tool with a final summary in markdown format.
+    6.1. The final summary should be detailed and answers/summarizes the results from the user's request.
 
 Mode handling (from the user message):
 

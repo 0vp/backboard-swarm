@@ -180,6 +180,136 @@ const ToolCallNode = ({ event, results }) => {
   )
 }
 
+const toTimestampMs = (value) => {
+  const ms = new Date(value).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
+
+const formatSeconds = (value) => {
+  if (!Number.isFinite(value) || value < 0) return '—'
+  return `${value.toFixed(value >= 100 ? 0 : 2)}s`
+}
+
+const isOrchestratorEvent = (event) => {
+  const role = String(event?.Role || '').toLowerCase()
+  return event?.AgentID === 'agent-0' || role === 'orchestrator'
+}
+
+const getRunLatencyMetrics = (run) => {
+  if (!run?.events?.length) return null
+
+  const startedEvent = run.events.find(e => e.Type === 'swarm_started')
+  const finishedEvent = [...run.events].reverse().find(e => e.Type === 'swarm_finished')
+
+  const startedMs = toTimestampMs(startedEvent?.Timestamp)
+  const finishedMs = toTimestampMs(finishedEvent?.Timestamp)
+
+  if (startedMs == null || finishedMs == null || finishedMs < startedMs) return null
+
+  const timedEvents = run.events
+    .map((event) => ({ event, ts: toTimestampMs(event.Timestamp) }))
+    .filter((entry) => entry.ts != null)
+    .sort((a, b) => a.ts - b.ts)
+
+  const planReadyBoundaries = Array.from(new Set(
+    timedEvents
+      .filter(({ event, ts }) => (
+        ts >= startedMs
+        && ts <= finishedMs
+        && event.Type === 'agent_status'
+        && String(event.Status || '').toLowerCase() === 'plan_ready'
+        && isOrchestratorEvent(event)
+      ))
+      .map(({ ts }) => ts)
+  ))
+
+  const segments = []
+  if (planReadyBoundaries.length === 0) {
+    segments.push({ start: startedMs, end: finishedMs })
+  } else {
+    if (planReadyBoundaries[0] > startedMs) {
+      segments.push({ start: startedMs, end: planReadyBoundaries[0] })
+    }
+    for (let i = 0; i < planReadyBoundaries.length; i++) {
+      const start = planReadyBoundaries[i]
+      const end = i + 1 < planReadyBoundaries.length ? planReadyBoundaries[i + 1] : finishedMs
+      if (end > start) {
+        segments.push({ start, end })
+      }
+    }
+  }
+
+  let swarmSeconds = 0
+  let classicSeconds = 0
+  let orchestratorSeconds = 0
+  const workerTotals = new Map()
+
+  segments.forEach((segment, index) => {
+    const isLast = index === segments.length - 1
+    const segmentEvents = timedEvents.filter(({ ts }) => ts >= segment.start && (isLast ? ts <= segment.end : ts < segment.end))
+
+    const workerWindows = new Map()
+    segmentEvents.forEach(({ event, ts }) => {
+      if (isOrchestratorEvent(event)) return
+      if (!event?.AgentID) return
+      const current = workerWindows.get(event.AgentID) || { start: ts, end: ts }
+      current.start = Math.min(current.start, ts)
+      current.end = Math.max(current.end, ts)
+      workerWindows.set(event.AgentID, current)
+    })
+
+    const workers = Array.from(workerWindows.entries()).map(([agentID, window]) => ({
+      agentID,
+      start: window.start,
+      end: window.end,
+      seconds: Math.max(0, (window.end - window.start) / 1000),
+    }))
+
+    if (workers.length === 0) {
+      const onlyOrchestrator = Math.max(0, (segment.end - segment.start) / 1000)
+      orchestratorSeconds += onlyOrchestrator
+      swarmSeconds += onlyOrchestrator
+      classicSeconds += onlyOrchestrator
+      return
+    }
+
+    const firstWorkerStart = Math.min(...workers.map((w) => w.start))
+    const lastWorkerEnd = Math.max(...workers.map((w) => w.end))
+    const orchestrationBlock = Math.max(0, (firstWorkerStart - segment.start) / 1000) + Math.max(0, (segment.end - lastWorkerEnd) / 1000)
+    const longestWorker = Math.max(...workers.map((w) => w.seconds))
+    const sumWorkers = workers.reduce((sum, worker) => sum + worker.seconds, 0)
+
+    orchestratorSeconds += orchestrationBlock
+    swarmSeconds += orchestrationBlock + longestWorker
+    classicSeconds += orchestrationBlock + sumWorkers
+
+    workers.forEach((worker) => {
+      workerTotals.set(worker.agentID, (workerTotals.get(worker.agentID) || 0) + worker.seconds)
+    })
+  })
+
+  const agentDurations = [
+    { agentID: 'agent-0', seconds: orchestratorSeconds },
+    ...Array.from(workerTotals.entries()).map(([agentID, seconds]) => ({ agentID, seconds })),
+  ]
+    .filter(item => item.seconds > 0)
+    .sort((a, b) => {
+      const aNum = Number((a.agentID.match(/agent-(\d+)/) || [])[1])
+      const bNum = Number((b.agentID.match(/agent-(\d+)/) || [])[1])
+      if (Number.isFinite(aNum) && Number.isFinite(bNum)) return aNum - bNum
+      return a.agentID.localeCompare(b.agentID)
+    })
+
+  const speedup = swarmSeconds > 0 && classicSeconds > 0 ? classicSeconds / swarmSeconds : null
+
+  return {
+    swarmSeconds,
+    linearSeconds: classicSeconds,
+    speedup,
+    agentDurations,
+  }
+}
+
 const AgentRunMessage = ({ run }) => {
   const [expanded, setExpanded] = useState(true)
   
@@ -192,6 +322,7 @@ const AgentRunMessage = ({ run }) => {
     if (e.Type === 'tool_call') return e.ToolName !== 'message'
     return e.Type === 'agent_status' && String(e.Status || '').toLowerCase() === 'message'
   })
+  const latencyMetrics = getRunLatencyMetrics(run)
 
   return (
     <div className="w-full bg-[#111111]/80 backdrop-blur-md border border-zinc-800/80 rounded-xl p-4 mb-4 transition-all hover:border-zinc-700/80">
@@ -242,6 +373,37 @@ const AgentRunMessage = ({ run }) => {
                 <FaRobot className="w-4 h-4" /> Final Summary
               </div>
               <MarkdownMessage content={getFinalSummaryContent(summaryEvent.Message)} className="text-zinc-300" />
+            </div>
+          )}
+
+          {summaryEvent && latencyMetrics && (
+            <div className="mt-4 bg-[#1A1A1A] rounded-lg p-4 text-sm text-zinc-300 border border-zinc-800">
+              <div className="flex items-center justify-between gap-4 text-xs sm:text-sm">
+                <div>
+                  <span className="text-zinc-500">Swarm</span>
+                  <div className="text-[#ff8ec8] font-medium">{formatSeconds(latencyMetrics.swarmSeconds)}</div>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Classic</span>
+                  <div className="text-[#ff8ec8] font-medium">{formatSeconds(latencyMetrics.linearSeconds)}</div>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Latency speedup</span>
+                  <div className="text-green-400 font-medium">
+                    {Number.isFinite(latencyMetrics.speedup) ? `${latencyMetrics.speedup.toFixed(2)}x` : '—'}
+                  </div>
+                </div>
+              </div>
+
+              {latencyMetrics.agentDurations.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-zinc-800 flex flex-wrap gap-2">
+                  {latencyMetrics.agentDurations.map((item) => (
+                    <span key={item.agentID} className="rounded-full border border-zinc-700 bg-zinc-900/60 px-2 py-0.5 text-[11px] text-zinc-300">
+                      {item.agentID}: {formatSeconds(item.seconds)}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
