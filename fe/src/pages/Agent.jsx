@@ -1,23 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  Send,
-  Terminal,
-  FileText,
-  FolderOpen,
-  Code,
-  Activity,
-  Play,
-  CheckCircle2,
-  XCircle,
-  ChevronDown,
-  ChevronRight,
-  Bot,
-  Globe,
-  Settings,
-  X,
-  Search,
-  MessageSquare
-} from 'lucide-react'
+  FaPaperPlane,
+  FaTerminal,
+  FaFileLines,
+  FaFolderOpen,
+  FaCode,
+  FaBolt,
+  FaCircleXmark,
+  FaChevronDown,
+  FaChevronRight,
+  FaRobot,
+  FaGlobe,
+  FaXmark,
+  FaMagnifyingGlass,
+  FaRegMessage
+} from 'react-icons/fa6'
+import { CheckCircle2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import Dither from '../components/art/Dither'
@@ -44,15 +42,15 @@ const MarkdownMessage = ({ content, className = '' }) => (
 )
 
 const getToolIcon = (toolName) => {
-  if (!toolName) return <Activity className="w-4 h-4" />
+  if (!toolName) return <FaBolt className="w-4 h-4" />
   const lower = toolName.toLowerCase()
-  if (lower.includes('read') || lower.includes('view')) return <FileText className="w-4 h-4 text-[#ff5aa8]" />
-  if (lower.includes('list') || lower.includes('ls')) return <FolderOpen className="w-4 h-4 text-[#ff5aa8]" />
-  if (lower.includes('patch') || lower.includes('write')) return <Code className="w-4 h-4 text-[#ff5aa8]" />
-  if (lower.includes('exec') || lower.includes('run')) return <Terminal className="w-4 h-4 text-[#ff5aa8]" />
-  if (lower.includes('search')) return <Search className="w-4 h-4 text-[#ff5aa8]" />
-  if (lower.includes('web')) return <Globe className="w-4 h-4 text-[#ff5aa8]" />
-  return <Activity className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('read') || lower.includes('view')) return <FaFileLines className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('list') || lower.includes('ls')) return <FaFolderOpen className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('patch') || lower.includes('write')) return <FaCode className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('exec') || lower.includes('run')) return <FaTerminal className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('search')) return <FaMagnifyingGlass className="w-4 h-4 text-[#ff5aa8]" />
+  if (lower.includes('web')) return <FaGlobe className="w-4 h-4 text-[#ff5aa8]" />
+  return <FaBolt className="w-4 h-4 text-[#ff5aa8]" />
 }
 
 const getToolLabel = (toolName, message) => {
@@ -83,23 +81,25 @@ const ToolCallNode = ({ event, results }) => {
   return (
     <div className="flex flex-col ml-6 my-1">
       <div 
-        className="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer group py-1"
+        className="flex items-start gap-2 text-zinc-300 hover:text-white cursor-pointer group py-1"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex items-center justify-center w-4 h-4">
-          {expanded ? <ChevronDown className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" /> : <ChevronRight className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" />}
+        <div className="flex items-center justify-center w-4 h-4 shrink-0 mt-0.5">
+          {expanded ? <FaChevronDown className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" /> : <FaChevronRight className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" />}
         </div>
-        {getToolIcon(event.ToolName)}
-        <span className="text-sm font-medium break-all">{getToolLabel(event.ToolName, event.Message)}</span>
-        <span className="ml-2 rounded-full border border-[#ff5aa8]/40 bg-[#ff5aa8]/10 px-2 py-0.5 text-[10px] font-medium text-[#ff8ec8]">
+        <div className="shrink-0 mt-0.5">{getToolIcon(event.ToolName)}</div>
+        <span className="text-sm font-medium break-words flex-1 min-w-0 leading-5">{getToolLabel(event.ToolName, event.Message)}</span>
+        <span className="ml-2 rounded-full border border-[#ff5aa8]/40 bg-[#ff5aa8]/10 px-2 py-0.5 text-[10px] font-medium text-[#ff8ec8] shrink-0 mt-0.5">
           {agentLabel}
         </span>
-        
-        {isFinished ? (
-          isError ? <XCircle className="w-3 h-3 text-red-500 ml-2" /> : <CheckCircle2 className="w-3 h-3 text-green-500 ml-2" />
-        ) : (
-          <span className="w-2 h-2 rounded-full bg-[#ff5aa8] animate-pulse ml-2 shadow-[0_0_8px_rgba(255,90,168,0.7)]" />
-        )}
+
+        <div className="ml-2 shrink-0 w-3.5 h-3.5 flex items-center justify-center mt-0.5">
+          {isFinished ? (
+            isError ? <FaCircleXmark className="w-3.5 h-3.5 text-red-500" /> : <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+          ) : (
+            <div className="w-1.5 h-1.5 rounded-full bg-[#ff5aa8] animate-pulse shadow-[0_0_6px_#ff5aa8]" />
+          )}
+        </div>
       </div>
 
       {expanded && (
@@ -119,7 +119,7 @@ const ToolCallNode = ({ event, results }) => {
           {isFinished && (
             <div>
               <span className="text-zinc-500">{isError ? 'Error:' : 'Output:'} </span>
-              <div className="bg-zinc-900 p-2 rounded mt-1 border border-zinc-800 overflow-x-auto max-h-40 overflow-y-auto">
+              <div className="theme-scrollbar bg-zinc-900 p-2 rounded mt-1 border border-zinc-800 overflow-x-auto max-h-40 overflow-y-auto">
                 <MarkdownMessage content={resultEvent.Message} className="text-zinc-200" />
               </div>
             </div>
@@ -150,22 +150,22 @@ const AgentRunMessage = ({ run }) => {
           className="flex items-start gap-3 cursor-pointer group flex-1"
           onClick={() => setExpanded(!expanded)}
         >
-          <div className="mt-1">
+          <div className="shrink-0 w-5 h-5 flex items-center justify-center mt-0.5">
             {isFinished ? (
-              isError ? <XCircle className="w-5 h-5 text-red-500" /> : <CheckCircle2 className="w-5 h-5 text-green-500" />
+              isError ? <FaCircleXmark className="w-5 h-5 text-red-500" /> : <CheckCircle2 className="w-5 h-5 text-green-500" />
             ) : (
-              <div className="w-3 h-3 mt-1 rounded-full bg-[#ff5aa8] animate-pulse shadow-[0_0_8px_rgba(255,90,168,0.7)]" />
+              <div className="w-2 h-2 rounded-full bg-[#ff5aa8] animate-pulse shadow-[0_0_8px_#ff5aa8]" />
             )}
           </div>
           
-          <div className="flex-1">
-            <h3 className="text-zinc-200 text-sm font-medium leading-relaxed mb-1 pr-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-zinc-200 text-sm font-medium leading-relaxed mb-1 pr-4 break-words">
               {run.task}
             </h3>
           </div>
           
-          <div className="flex items-center text-zinc-500">
-            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          <div className="flex items-center text-zinc-500 shrink-0">
+            {expanded ? <FaChevronDown className="w-4 h-4" /> : <FaChevronRight className="w-4 h-4" />}
           </div>
         </div>
       </div>
@@ -181,7 +181,7 @@ const AgentRunMessage = ({ run }) => {
           
           {!isFinished && timelineEvents.length === 0 && (
             <div className="ml-6 flex items-center gap-2 text-zinc-500 text-sm">
-              <Activity className="w-4 h-4 animate-spin-slow" />
+              <div className="w-2 h-2 rounded-full bg-[#ff5aa8] animate-pulse shadow-[0_0_8px_#ff5aa8]" />
               Thinking...
             </div>
           )}
@@ -189,7 +189,7 @@ const AgentRunMessage = ({ run }) => {
           {summaryEvent && (
             <div className="mt-4 bg-[#1A1A1A] rounded-lg p-4 text-sm text-zinc-300 border border-zinc-800">
               <div className="flex items-center gap-2 mb-2 text-[#ff5aa8] font-medium">
-                <Bot className="w-4 h-4" /> Final Summary
+                <FaRobot className="w-4 h-4" /> Final Summary
               </div>
               <MarkdownMessage content={summaryEvent.Message} className="text-zinc-300" />
             </div>
@@ -229,13 +229,13 @@ const AgentsSidebar = ({ agents, isOpen, onClose }) => {
     <div className="absolute right-0 top-0 bottom-0 w-64 bg-[#0D0D0D] border-l-2 border-[#1A1A1A] z-20 flex flex-col animate-fade-in shadow-2xl">
       <div className="flex items-center justify-between p-4 border-b border-[#1A1A1A]">
         <h3 className="text-white font-medium flex items-center gap-2">
-          <Bot className="w-4 h-4 text-[#ff5aa8]" /> Active Agents
+          <FaRobot className="w-4 h-4 text-[#ff5aa8]" /> Active Agents
         </h3>
         <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors cursor-pointer">
-          <X className="w-4 h-4" />
+          <FaXmark className="w-4 h-4" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="theme-scrollbar flex-1 overflow-y-auto p-4 space-y-4">
         {agents.length === 0 ? (
           <p className="text-zinc-500 text-xs text-center mt-4">No agents active yet.</p>
         ) : (
@@ -448,21 +448,27 @@ export default function Agent() {
         </div>
         
         <div className="flex items-center gap-3">
+          {runs.some(r => r.status === 'running') && (
+            <div className="flex items-center gap-2 text-[#ff5aa8] text-xs font-medium mr-2">
+              <div className="w-4 h-4 rounded-full border-2 border-[#ff5aa8]/30 border-t-[#ff5aa8] animate-spin shadow-[0_0_10px_rgba(255,90,168,0.35)]" />
+              Processing...
+            </div>
+          )}
           <button 
             onClick={() => setShowAgents(!showAgents)}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all border cursor-pointer ${showAgents ? 'bg-zinc-800 text-white border-zinc-700' : 'bg-transparent text-zinc-400 border-zinc-800 hover:bg-zinc-900 hover:text-white'}`}
           >
-            <Bot className="w-3.5 h-3.5" />
+            <FaRobot className="w-3.5 h-3.5" />
             Agents ({activeAgents.length})
           </button>
         </div>
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto relative z-10 p-4 sm:p-6 scroll-smooth">
+      <div className="theme-scrollbar flex-1 overflow-y-auto relative z-10 p-4 sm:p-6 scroll-smooth">
         {runs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center opacity-50 space-y-4">
-            <MessageSquare className="w-12 h-12 text-zinc-600 mb-2" />
+            <FaRegMessage className="w-12 h-12 text-zinc-600 mb-2" />
             <h2 className="text-xl font-medium text-zinc-300">Ready for commands</h2>
             <p className="text-sm text-zinc-500 max-w-md">
               Ask the swarm to perform tasks, audit code, or fetch information. They will orchestrate and delegate as needed.
@@ -472,16 +478,16 @@ export default function Agent() {
           <div className="max-w-4xl mx-auto flex flex-col">
             {runs.map((r, i) => {
               if (r.type === 'user') {
-                return <UserMessage key={r.id} content={r.content} />
-              }
-              if (r.type === 'error') {
-                return (
-                  <div key={r.id} className="w-full text-center text-red-400 text-xs py-2 bg-red-950/20 border border-red-900/30 rounded-lg mb-4">
-                    {r.content}
-                  </div>
-                )
-              }
-              return <AgentRunMessage key={r.id} run={r} />
+                  return <UserMessage key={r.id} content={r.content} />
+                }
+                if (r.type === 'error') {
+                  return (
+                    <div key={r.id} className="w-full text-center text-red-400 text-xs py-2 bg-red-950/20 border border-red-900/30 rounded-lg mb-4">
+                      {r.content}
+                    </div>
+                  )
+                }
+                return <AgentRunMessage key={r.id} run={r} />
             })}
             <div ref={messagesEndRef} />
           </div>
@@ -503,7 +509,7 @@ export default function Agent() {
                 }
               }}
               placeholder="Ask the swarm to perform a task..."
-              className="w-full bg-transparent text-white px-4 py-4 text-sm resize-none focus:outline-none placeholder:text-zinc-600 font-['Geist_Pixel'] min-h-[56px] max-h-48"
+              className="theme-scrollbar w-full bg-transparent text-white px-4 py-4 text-sm resize-none focus:outline-none placeholder:text-zinc-600 font-['Geist_Pixel'] min-h-[56px] max-h-48"
               rows={1}
               style={{ fieldSizing: 'content' }}
             />
@@ -512,7 +518,7 @@ export default function Agent() {
               disabled={!input.trim()}
               className="p-3 m-1.5 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-[#ff5aa8] rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-zinc-800/50 flex-shrink-0"
             >
-              <Send className="w-4 h-4" />
+              <FaPaperPlane className="w-4 h-4" />
             </button>
           </div>
           <div className="text-center mt-2 text-[10px] text-zinc-600">

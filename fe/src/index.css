@@ -115,3 +115,39 @@ body {
   outline: 2px solid #0b0c0e;
   outline-offset: 2px;
 }
+
+.theme-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #ff5aa8 #111111;
+}
+
+.theme-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.theme-scrollbar::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, #0d0d0d 0%, #141414 100%);
+  border-radius: 999px;
+}
+
+.theme-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #ff78bb 0%, #ff5aa8 55%, #a742ff 100%);
+  border-radius: 999px;
+  border: 2px solid #111111;
+  box-shadow: 0 0 6px rgba(255, 90, 168, 0.35), inset 0 0 6px rgba(255, 255, 255, 0.12);
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.theme-scrollbar:hover::-webkit-scrollbar-thumb {
+  filter: brightness(1.08);
+  box-shadow: 0 0 12px rgba(255, 90, 168, 0.55), 0 0 20px rgba(167, 66, 255, 0.25), inset 0 0 8px rgba(255, 255, 255, 0.18);
+}
+
+.theme-scrollbar::-webkit-scrollbar-thumb:active {
+  box-shadow: 0 0 16px rgba(255, 90, 168, 0.75), 0 0 24px rgba(167, 66, 255, 0.35), inset 0 0 10px rgba(255, 255, 255, 0.2);
+}
+
+.theme-scrollbar::-webkit-scrollbar-corner {
+  background: #111111;
+}
