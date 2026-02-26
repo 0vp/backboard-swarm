@@ -66,7 +66,7 @@ const getToolLabel = (toolName, message) => {
   if (match) {
     try {
       const args = match[1]
-      return `${label} (${args.slice(0, 30)}${args.length > 30 ? '...' : ''})`
+      return `${label} (${args})`
     } catch(e) {}
   }
   
@@ -90,7 +90,7 @@ const ToolCallNode = ({ event, results }) => {
           {expanded ? <ChevronDown className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" /> : <ChevronRight className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" />}
         </div>
         {getToolIcon(event.ToolName)}
-        <span className="text-sm font-medium">{getToolLabel(event.ToolName, event.Message)}</span>
+        <span className="text-sm font-medium break-all">{getToolLabel(event.ToolName, event.Message)}</span>
         <span className="ml-2 rounded-full border border-[#ff5aa8]/40 bg-[#ff5aa8]/10 px-2 py-0.5 text-[10px] font-medium text-[#ff8ec8]">
           {agentLabel}
         </span>
@@ -136,9 +136,12 @@ const AgentRunMessage = ({ run }) => {
   const isFinished = run.status === 'completed' || run.status === 'failed'
   const isError = run.status === 'failed'
 
-  const toolCalls = run.events.filter(e => e.Type === 'tool_call')
   const toolResults = run.events.filter(e => e.Type === 'tool_result')
   const summaryEvent = run.events.find(e => e.Type === 'swarm_finished')
+  const timelineEvents = run.events.filter((e) => {
+    if (e.Type === 'tool_call') return e.ToolName !== 'message'
+    return e.Type === 'agent_status' && String(e.Status || '').toLowerCase() === 'message'
+  })
 
   return (
     <div className="w-full bg-[#111111]/80 backdrop-blur-md border border-zinc-800/80 rounded-xl p-4 mb-4 transition-all hover:border-zinc-700/80">
@@ -169,11 +172,14 @@ const AgentRunMessage = ({ run }) => {
 
       {expanded && (
         <div className="mt-4 flex flex-col gap-1 border-t border-zinc-800/50 pt-4">
-          {toolCalls.map((tc, i) => (
-            <ToolCallNode key={`${tc.RunID}-${tc.Timestamp}-${i}`} event={tc} results={toolResults} />
-          ))}
+          {timelineEvents.map((evt, i) => {
+            if (evt.Type === 'agent_status') {
+              return <AgentStatusMessage key={`${evt.RunID}-${evt.Timestamp}-${i}-msg`} event={evt} />
+            }
+            return <ToolCallNode key={`${evt.RunID}-${evt.Timestamp}-${i}-tool`} event={evt} results={toolResults} />
+          })}
           
-          {!isFinished && toolCalls.length === 0 && (
+          {!isFinished && timelineEvents.length === 0 && (
             <div className="ml-6 flex items-center gap-2 text-zinc-500 text-sm">
               <Activity className="w-4 h-4 animate-spin-slow" />
               Thinking...
@@ -199,6 +205,18 @@ const UserMessage = ({ content }) => {
     <div className="w-full flex justify-end mb-4 pr-2">
       <div className="max-w-[80%] bg-zinc-800 rounded-2xl rounded-tr-sm px-4 py-3 text-zinc-100 text-sm shadow-sm border border-zinc-700/50">
         {content}
+      </div>
+    </div>
+  )
+}
+
+const AgentStatusMessage = ({ event }) => {
+  const agentLabel = event.AgentID || 'agent'
+  return (
+    <div className="w-full flex justify-start mb-3">
+      <div className="max-w-[85%] bg-zinc-900/80 rounded-2xl rounded-tl-sm px-4 py-3 text-zinc-100 text-sm border border-[#ff5aa8]/30">
+        <div className="text-[10px] uppercase tracking-wide text-[#ff8ec8] mb-1">{agentLabel}</div>
+        <MarkdownMessage content={event.Message} className="text-zinc-200" />
       </div>
     </div>
   )

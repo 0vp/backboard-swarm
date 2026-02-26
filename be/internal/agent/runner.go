@@ -208,12 +208,12 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 						Role:      role,
 						ToolName:  result.call.Function.Name,
 						Status:    "error",
-						Message:   fmt.Sprintf("tool failed: %v", result.err),
+						Message:   fmt.Sprintf("tool failed: %v\n\n%s", result.err, result.out.Output),
 						Timestamp: time.Now().UTC(),
 						Meta: map[string]any{
 							"tool_index":     result.idx + 1,
 							"tool_total":     len(resp.ToolCalls),
-							"output_preview": truncate(result.out.Output, 220),
+							"output_preview": result.out.Output,
 						},
 					})
 				} else {
@@ -224,12 +224,12 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 						Role:      role,
 						ToolName:  result.call.Function.Name,
 						Status:    "ok",
-						Message:   fmt.Sprintf("tool executed, output=%s", truncate(result.out.Output, 220)),
+						Message:   result.out.Output,
 						Timestamp: time.Now().UTC(),
 						Meta: map[string]any{
 							"tool_index":     result.idx + 1,
 							"tool_total":     len(resp.ToolCalls),
-							"output_preview": truncate(result.out.Output, 220),
+							"output_preview": result.out.Output,
 						},
 					})
 				}
@@ -446,18 +446,7 @@ func (r *Runner) toolArgsPreview(call backboard.ToolCall) string {
 	if len(b) == 0 || string(b) == "{}" {
 		return ""
 	}
-	return fmt.Sprintf(" args=%s", truncate(string(b), 180))
-}
-
-func truncate(s string, max int) string {
-	if max <= 0 {
-		return ""
-	}
-	s = strings.TrimSpace(s)
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "..."
+	return fmt.Sprintf(" args=%s", string(b))
 }
 
 func (r *Runner) emit(evt types.Event) {

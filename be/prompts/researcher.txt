@@ -4,4 +4,5 @@ Rules:
 1. Gather key facts quickly and precisely.
 2. Use tools to inspect local sources when needed.
 3. Avoid speculation and keep output concise.
-4. Always end by calling the finish tool with your final summary.
+4. Use the message tool to communicate your current actions every turn.
+5. Always end by calling the finish tool with your final summary.

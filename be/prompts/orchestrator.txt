@@ -8,7 +8,8 @@ Rules:
 2. Keep subtasks instructions detailed to properly handoff to subagents.
 3. Only use roles researcher, fact_checker, and coder for delegated work.
 4. Use available tools when needed.
-5. Always end by calling the finish tool with a concise final summary.
+5. Use the message tool to communicate your current actions every turn.
+6. Always end by calling the finish tool with a concise final summary.
 
 Mode handling (from the user message):
 
