@@ -66,16 +66,16 @@ function Index() {
         </div>
         <div className="flex flex-row gap-12 w-full max-w-7xl pl-4 mt-4 pr-4">
           <p className="text-zinc-500 text-xs flex-1 leading-relaxed">
-            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+            Wuvo is an intelligent agent orchestration system built on Backboard. It deploys multiple AI agents in parallel goroutines, each with specialized roles like Researcher, Fact Checker, or Developer. An Orchestrator agent dynamically decomposes complex tasks and delegates to subagents for simultaneous execution.
           </p>
           <p className="text-zinc-500 text-xs flex-1 leading-relaxed">
-            Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+            Each agent operates in its own goroutine with access to a powerful tool suite: file reading, code search, web search, and web fetching. Agents communicate through WebSockets, streaming real-time progress updates, tool calls, and results back to the frontend for live monitoring.
           </p>
           <p className="text-zinc-500 text-xs flex-1 leading-relaxed">
-            Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet.
+            The system leverages Backboard's SOTA memory architecture, enabling assistants to remember facts and preferences across conversations. Persistent threads maintain context, while shared memory allows agents to access common knowledge and previous interactions for more coherent responses.
           </p>
           <p className="text-zinc-500 text-xs flex-1 leading-relaxed">
-            At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident.
+            By running independent subtasks in parallel rather than sequentially, Wuvo achieves significant latency speedups compared to single-agent systems. The Orchestrator synthesizes results from all subagents into a unified final answer, making complex multi-step workflows dramatically faster.
           </p>
         </div>
       </div>
