@@ -710,7 +710,7 @@ export default function Agent() {
       <div className="relative z-10 p-4 sm:p-6 border-t border-[#1A1A1A] bg-[#0D0D0D]/90 backdrop-blur-md">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto relative group">
           <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-[#ff5aa8]/20 via-[#a742ff]/20 to-transparent opacity-0 blur transition duration-500 group-hover:opacity-100" />
-          <div className="relative flex items-end bg-zinc-900 rounded-2xl border border-zinc-700/50 shadow-inner focus-within:border-[#ff5aa8]/50 focus-within:ring-1 focus-within:ring-[#ff5aa8]/50 transition-all overflow-hidden">
+          <div className="relative flex items-center bg-zinc-900 rounded-2xl border border-zinc-700/50 shadow-inner focus-within:border-[#ff5aa8]/50 focus-within:ring-1 focus-within:ring-[#ff5aa8]/50 transition-all overflow-hidden">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -728,7 +728,7 @@ export default function Agent() {
             <button
               type="submit"
               disabled={!input.trim()}
-              className="p-3 m-1.5 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-[#ff5aa8] rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-zinc-800/50 flex-shrink-0"
+              className="p-3 mx-1.5 text-zinc-400 hover:text-white bg-zinc-800/50 hover:bg-[#ff5aa8] rounded-xl transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-zinc-800/50 flex-shrink-0"
             >
               <FaPaperPlane className="w-4 h-4" />
             </button>
