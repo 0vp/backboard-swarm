@@ -79,7 +79,7 @@ const getFinalSummaryContent = (message) => {
 }
 
 const MarkdownMessage = ({ content, className = '' }) => (
-  <div className={`whitespace-normal break-words [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:border [&_pre]:border-zinc-700 [&_pre]:bg-zinc-950/70 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-zinc-900 [&_code]:px-1 [&_code]:py-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-[#ff5aa8] [&_blockquote]:pl-3 ${className}`}>
+  <div className={`whitespace-normal break-words [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:border [&_pre]:border-zinc-700 [&_pre]:bg-zinc-950/70 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-zinc-900 [&_code]:px-1 [&_code]:py-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-[#ff5aa8] [&_blockquote]:pl-3 [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_th]:border [&_th]:border-zinc-700 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:text-xs [&_th]:font-semibold [&_th]:bg-zinc-800 [&_th]:text-zinc-200 [&_td]:border [&_td]:border-zinc-700 [&_td]:px-3 [&_td]:py-2 [&_td]:text-xs [&_td]:text-zinc-300 [&_tr:nth-child(even)]:bg-zinc-900/50 [&_hr]:my-4 [&_hr]:border-zinc-700 ${className}`}>
     <ReactMarkdown remarkPlugins={[remarkGfm]}>
       {stringifyContent(content)}
     </ReactMarkdown>
