@@ -33,6 +33,51 @@ const stringifyContent = (value) => {
   }
 }
 
+const parseMaybeJSON = (value) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  if (!trimmed || (trimmed[0] !== '{' && trimmed[0] !== '[')) return value
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return value
+  }
+}
+
+const objectToMarkdown = (value) => {
+  if (!value || typeof value !== 'object') return stringifyContent(value)
+  const lines = Object.entries(value).map(([key, val]) => {
+    const label = key.replace(/_/g, ' ')
+    if (Array.isArray(val)) {
+      if (val.length === 0) return `- **${label}:**`
+      return `- **${label}:**\n${val.map(item => `  - ${typeof item === 'object' ? stringifyContent(item) : String(item)}`).join('\n')}`
+    }
+    if (val && typeof val === 'object') {
+      return `- **${label}:** ${stringifyContent(val)}`
+    }
+    return `- **${label}:** ${val == null ? '' : String(val)}`
+  })
+  return lines.join('\n')
+}
+
+const getFinalSummaryContent = (message) => {
+  const parsed = parseMaybeJSON(message)
+  if (typeof parsed === 'string') return parsed
+  if (!parsed || typeof parsed !== 'object') return stringifyContent(parsed)
+
+  if (typeof parsed.summary === 'string') return parsed.summary
+  if (parsed.summary && typeof parsed.summary === 'object') {
+    if (typeof parsed.summary.markdown === 'string') return parsed.summary.markdown
+    if (typeof parsed.summary.message === 'string') return parsed.summary.message
+    if (typeof parsed.summary.text === 'string') return parsed.summary.text
+    return objectToMarkdown(parsed.summary)
+  }
+
+  if (typeof parsed.message === 'string') return parsed.message
+  if (typeof parsed.text === 'string') return parsed.text
+  return objectToMarkdown(parsed)
+}
+
 const MarkdownMessage = ({ content, className = '' }) => (
   <div className={`whitespace-normal break-words [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:border [&_pre]:border-zinc-700 [&_pre]:bg-zinc-950/70 [&_pre]:p-2 [&_code]:rounded [&_code]:bg-zinc-900 [&_code]:px-1 [&_code]:py-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-[#ff5aa8] [&_blockquote]:pl-3 ${className}`}>
     <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -88,7 +133,12 @@ const ToolCallNode = ({ event, results }) => {
           {expanded ? <FaChevronDown className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" /> : <FaChevronRight className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" />}
         </div>
         <div className="shrink-0 mt-0.5">{getToolIcon(event.ToolName)}</div>
-        <span className="text-sm font-medium break-words flex-1 min-w-0 leading-5">{getToolLabel(event.ToolName, event.Message)}</span>
+        <span
+          className="text-sm font-medium flex-1 min-w-0 leading-5 overflow-hidden text-ellipsis whitespace-nowrap"
+          title={getToolLabel(event.ToolName, event.Message)}
+        >
+          {getToolLabel(event.ToolName, event.Message)}
+        </span>
         <span className="ml-2 rounded-full border border-[#ff5aa8]/40 bg-[#ff5aa8]/10 px-2 py-0.5 text-[10px] font-medium text-[#ff8ec8] shrink-0 mt-0.5">
           {agentLabel}
         </span>
@@ -191,7 +241,7 @@ const AgentRunMessage = ({ run }) => {
               <div className="flex items-center gap-2 mb-2 text-[#ff5aa8] font-medium">
                 <FaRobot className="w-4 h-4" /> Final Summary
               </div>
-              <MarkdownMessage content={summaryEvent.Message} className="text-zinc-300" />
+              <MarkdownMessage content={getFinalSummaryContent(summaryEvent.Message)} className="text-zinc-300" />
             </div>
           )}
         </div>
@@ -214,9 +264,9 @@ const AgentStatusMessage = ({ event }) => {
   const agentLabel = event.AgentID || 'agent'
   return (
     <div className="w-full flex justify-start mb-3">
-      <div className="max-w-[85%] bg-zinc-900/80 rounded-2xl rounded-tl-sm px-4 py-3 text-zinc-100 text-sm border border-[#ff5aa8]/30">
+      <div className="max-w-[85%] bg-[#1A1A1A] rounded-lg p-4 text-sm text-zinc-300">
         <div className="text-[10px] uppercase tracking-wide text-[#ff8ec8] mb-1">{agentLabel}</div>
-        <MarkdownMessage content={event.Message} className="text-zinc-200" />
+        <MarkdownMessage content={event.Message} className="text-zinc-300" />
       </div>
     </div>
   )
@@ -469,7 +519,7 @@ export default function Agent() {
         {runs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center opacity-50 space-y-4">
             <FaRegMessage className="w-12 h-12 text-zinc-600 mb-2" />
-            <h2 className="text-xl font-medium text-zinc-300">Ready for commands</h2>
+            <h2 className="text-xl font-medium text-zinc-300">Your swarm is ready.</h2>
             <p className="text-sm text-zinc-500 max-w-md">
               Ask the swarm to perform tasks, audit code, or fetch information. They will orchestrate and delegate as needed.
             </p>
