@@ -176,6 +176,7 @@ function DitheredWaves({
 }) {
   const mesh = useRef(null);
   const mouseRef = useRef(new THREE.Vector2());
+  const isPointerInsideRef = useRef(false);
   const { viewport, size, gl } = useThree();
 
   const waveUniformsRef = useRef({
@@ -200,6 +201,37 @@ function DitheredWaves({
     }
   }, [size, gl]);
 
+  useEffect(() => {
+    if (!enableMouseInteraction) return;
+
+    const updateMouseFromPointer = event => {
+      const rect = gl.domElement.getBoundingClientRect();
+      const dpr = gl.getPixelRatio();
+      const insideX = event.clientX >= rect.left && event.clientX <= rect.right;
+      const insideY = event.clientY >= rect.top && event.clientY <= rect.bottom;
+
+      if (insideX && insideY) {
+        isPointerInsideRef.current = true;
+        mouseRef.current.set((event.clientX - rect.left) * dpr, (event.clientY - rect.top) * dpr);
+        return;
+      }
+
+      isPointerInsideRef.current = false;
+    };
+
+    const handlePointerLeaveWindow = () => {
+      isPointerInsideRef.current = false;
+    };
+
+    window.addEventListener('pointermove', updateMouseFromPointer);
+    window.addEventListener('pointerleave', handlePointerLeaveWindow);
+
+    return () => {
+      window.removeEventListener('pointermove', updateMouseFromPointer);
+      window.removeEventListener('pointerleave', handlePointerLeaveWindow);
+    };
+  }, [enableMouseInteraction, gl]);
+
   const prevColor = useRef([...waveColor]);
   useFrame(({ clock }) => {
     const u = waveUniformsRef.current;
@@ -221,6 +253,10 @@ function DitheredWaves({
     u.mouseRadius.value = mouseRadius;
 
     if (enableMouseInteraction) {
+      if (!isPointerInsideRef.current) {
+        u.mousePos.value.set(-100000, -100000);
+        return;
+      }
       u.mousePos.value.copy(mouseRef.current);
     }
   });

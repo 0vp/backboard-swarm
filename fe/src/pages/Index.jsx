@@ -51,7 +51,7 @@ function Index() {
         <div className="w-full border-t-[3px] border-dashed border-[#4D4D4D] opacity-80 mb-4"/>
         <div className="flex justify-between items-start w-full pl-4">
           <div className="max-w-4xl">
-            <h2 className="text-white text-3xl leading-relaxed">Unlock Fully Intertwined Hive-Minded AI Agents to Simeoulatneously Swarm better than Ever.</h2>
+            <h2 className="text-white text-3xl leading-relaxed">Unlock Fully Intertwined Hive-Minded AI Agents to Simultaneously Swarm Better than Ever.</h2>
           </div>
           
           {/* Dotted Grid Box on the right  */}
