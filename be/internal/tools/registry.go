@@ -97,9 +97,15 @@ func (r *Registry) Execute(ctx context.Context, call backboard.ToolCall, execCtx
 		return backboard.ToolOutput{ToolCallID: call.ID, Output: out}, false, "", execErr
 	}
 
+	finished := call.Function.Name == "finish"
+	if call.Function.Name == "message" || call.Function.Name == "finish" {
+		payload := map[string]any{"ok": true}
+		b, _ := json.Marshal(payload)
+		return backboard.ToolOutput{ToolCallID: call.ID, Output: string(b)}, finished, execCtx.FinishSummary, nil
+	}
+
 	payload := map[string]any{"ok": true, "result": result}
 	b, _ := json.Marshal(payload)
-	finished := call.Function.Name == "finish"
 	return backboard.ToolOutput{ToolCallID: call.ID, Output: string(b)}, finished, execCtx.FinishSummary, nil
 }
 

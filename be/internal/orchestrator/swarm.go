@@ -19,6 +19,7 @@ type EventSink interface {
 
 type TaskRunner interface {
 	RunTask(ctx context.Context, in agent.TaskInput) (agent.TaskResult, error)
+	ResetSession(runID, agentID string)
 	EndRun(runID string)
 }
 
@@ -171,6 +172,7 @@ func (s *Swarm) runSubtasks(ctx context.Context, runID string, subtasks []types.
 			defer func() { <-sem }()
 
 			agentID := fmt.Sprintf("agent-%d", i+1)
+			s.runner.ResetSession(runID, agentID)
 			res, err := s.runner.RunTask(ctx, agent.TaskInput{
 				RunID:   runID,
 				AgentID: agentID,

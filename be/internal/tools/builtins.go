@@ -386,7 +386,7 @@ func messageTool(_ context.Context, args map[string]any, execCtx *ExecutionConte
 			Timestamp: time.Now().UTC(),
 		})
 	}
-	return map[string]any{"ack": true, "message": content}, nil
+	return map[string]any{"ack": true}, nil
 }
 
 func todoCreate(_ context.Context, args map[string]any, execCtx *ExecutionContext) (any, error) {
@@ -462,7 +462,7 @@ func finishTool(_ context.Context, args map[string]any, execCtx *ExecutionContex
 			Timestamp: time.Now().UTC(),
 		})
 	}
-	return map[string]any{"summary": summary}, nil
+	return map[string]any{"done": true}, nil
 }
 
 func getString(args map[string]any, key, fallback string) string {

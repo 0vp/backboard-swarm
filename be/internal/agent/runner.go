@@ -123,7 +123,9 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 	}
 
 	finishSummary := ""
+	finishSeen := false
 	for i := 0; i < r.cfg.MaxIterations; i++ {
+		iteration := i + 1
 		status := normalizeStatus(resp.Status)
 		r.emit(types.Event{
 			Type:      "agent_status",
@@ -134,10 +136,11 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 			Message:   statusMessage(resp),
 			Timestamp: time.Now().UTC(),
 			Meta: map[string]any{
-				"iteration":      i + 1,
+				"iteration":      iteration,
 				"max_iterations": r.cfg.MaxIterations,
 				"tool_calls":     len(resp.ToolCalls),
 				"thread_id":      session.ThreadID,
+				"run_id":         resp.RunID,
 			},
 		})
 
@@ -180,8 +183,12 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 					Message:   fmt.Sprintf("executing tool %d/%d in parallel%s", idx+1, len(resp.ToolCalls), argsPreview),
 					Timestamp: time.Now().UTC(),
 					Meta: map[string]any{
-						"tool_index": idx + 1,
-						"tool_total": len(resp.ToolCalls),
+						"tool_index":   idx + 1,
+						"tool_total":   len(resp.ToolCalls),
+						"tool_call_id": call.ID,
+						"iteration":    iteration,
+						"thread_id":    session.ThreadID,
+						"run_id":       resp.RunID,
 					},
 				})
 
@@ -198,8 +205,12 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 			close(resultsCh)
 
 			outputs := make([]backboard.ToolOutput, len(resp.ToolCalls))
-			finished := false
+			finishedInThisTurn := false
 			for result := range resultsCh {
+				displayOutput := result.out.Output
+				if result.call.Function.Name == "message" || result.call.Function.Name == "finish" {
+					displayOutput = `{"ok":true}`
+				}
 				if result.err != nil {
 					r.emit(types.Event{
 						Type:      "tool_result",
@@ -208,12 +219,16 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 						Role:      role,
 						ToolName:  result.call.Function.Name,
 						Status:    "error",
-						Message:   fmt.Sprintf("tool failed: %v\n\n%s", result.err, result.out.Output),
+						Message:   fmt.Sprintf("tool failed: %v\n\n%s", result.err, displayOutput),
 						Timestamp: time.Now().UTC(),
 						Meta: map[string]any{
 							"tool_index":     result.idx + 1,
 							"tool_total":     len(resp.ToolCalls),
-							"output_preview": result.out.Output,
+							"tool_call_id":   result.call.ID,
+							"iteration":      iteration,
+							"thread_id":      session.ThreadID,
+							"run_id":         resp.RunID,
+							"output_preview": displayOutput,
 						},
 					})
 				} else {
@@ -224,18 +239,23 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 						Role:      role,
 						ToolName:  result.call.Function.Name,
 						Status:    "ok",
-						Message:   result.out.Output,
+						Message:   displayOutput,
 						Timestamp: time.Now().UTC(),
 						Meta: map[string]any{
 							"tool_index":     result.idx + 1,
 							"tool_total":     len(resp.ToolCalls),
-							"output_preview": result.out.Output,
+							"tool_call_id":   result.call.ID,
+							"iteration":      iteration,
+							"thread_id":      session.ThreadID,
+							"run_id":         resp.RunID,
+							"output_preview": displayOutput,
 						},
 					})
 				}
 				outputs[result.idx] = result.out
 				if result.isFinish {
-					finished = true
+					finishedInThisTurn = true
+					finishSeen = true
 					if finishSummary == "" {
 						finishSummary = result.summary
 					}
@@ -246,8 +266,12 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 			if err != nil {
 				return TaskResult{}, fmt.Errorf("submit tool outputs: %w", err)
 			}
-			if finished {
-				return TaskResult{Summary: finishSummary, Raw: resp.Content}, nil
+			if finishedInThisTurn && normalizeStatus(resp.Status) == backboard.StatusCompleted {
+				summary := strings.TrimSpace(resp.Content)
+				if finishSummary != "" {
+					summary = finishSummary
+				}
+				return TaskResult{Summary: summary, Raw: resp.Content}, nil
 			}
 
 		case backboard.StatusCompleted:
@@ -258,11 +282,44 @@ func (r *Runner) RunTask(ctx context.Context, in TaskInput) (TaskResult, error) 
 			return TaskResult{Summary: summary, Raw: resp.Content}, nil
 
 		case backboard.StatusFailed, backboard.StatusCancelled:
+			if finishSummary != "" || strings.TrimSpace(resp.Content) != "" {
+				summary := strings.TrimSpace(firstNonEmpty(finishSummary, resp.Content))
+				r.emit(types.Event{
+					Type:      "agent_status",
+					RunID:     in.RunID,
+					AgentID:   in.AgentID,
+					Role:      role,
+					Status:    "recovered",
+					Message:   "run ended in failed/cancelled after finish; using captured summary",
+					Timestamp: time.Now().UTC(),
+					Meta: map[string]any{
+						"thread_id": session.ThreadID,
+						"run_id":    resp.RunID,
+					},
+				})
+				return TaskResult{Summary: summary, Raw: resp.Content}, nil
+			}
 			return TaskResult{}, fmt.Errorf("agent ended with status %s: %s", resp.Status, resp.Content)
 
 		default:
-			if resp.Content != "" && len(resp.ToolCalls) == 0 {
+			if status == "" && resp.Content != "" && len(resp.ToolCalls) == 0 {
 				return TaskResult{Summary: resp.Content, Raw: resp.Content}, nil
+			}
+			if finishSeen {
+				r.emit(types.Event{
+					Type:      "agent_status",
+					RunID:     in.RunID,
+					AgentID:   in.AgentID,
+					Role:      role,
+					Status:    "settling",
+					Message:   "waiting for run to settle after finish",
+					Timestamp: time.Now().UTC(),
+					Meta: map[string]any{
+						"iteration": iteration,
+						"thread_id": session.ThreadID,
+						"run_id":    resp.RunID,
+					},
+				})
 			}
 			time.Sleep(200 * time.Millisecond)
 		}
@@ -280,6 +337,12 @@ func (r *Runner) EndRun(runID string) {
 			delete(r.sessions, k)
 		}
 	}
+}
+
+func (r *Runner) ResetSession(runID, agentID string) {
+	r.sessionMu.Lock()
+	defer r.sessionMu.Unlock()
+	delete(r.sessions, sessionKey(runID, agentID))
 }
 
 func (r *Runner) getOrCreateSession(ctx context.Context, runID, agentID string, role types.Role) (agentSession, bool, error) {
@@ -394,7 +457,7 @@ func (r *Runner) submitToolOutputsWithRetry(ctx context.Context, in TaskInput, r
 			return resp, nil
 		}
 		lastErr = err
-		if !isTransient(err) || attempt == r.retryLimit {
+		if !isRetryableSubmit(err) || attempt == r.retryLimit {
 			break
 		}
 		delay := time.Duration(attempt) * 800 * time.Millisecond
@@ -434,7 +497,24 @@ func isTransient(err error) bool {
 	return false
 }
 
+func isRetryableSubmit(err error) bool {
+	if err == nil {
+		return false
+	}
+	v := strings.ToLower(err.Error())
+	markers := []string{"(429)", "(500)", "(502)", "(503)", "(504)", "status 429", "status 500", "status 502", "status 503", "status 504", "too many requests"}
+	for _, m := range markers {
+		if strings.Contains(v, m) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Runner) toolArgsPreview(call backboard.ToolCall) string {
+	if call.Function.Name == "message" || call.Function.Name == "finish" {
+		return ""
+	}
 	args, err := call.ArgumentsMap()
 	if err != nil {
 		return ""
@@ -447,6 +527,15 @@ func (r *Runner) toolArgsPreview(call backboard.ToolCall) string {
 		return ""
 	}
 	return fmt.Sprintf(" args=%s", string(b))
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func (r *Runner) emit(evt types.Event) {

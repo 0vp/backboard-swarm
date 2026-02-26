@@ -63,6 +63,9 @@ func TestRunInterleavesDecompositionThenFinalize(t *testing.T) {
 	if runner.decisionCalls != 2 {
 		t.Fatalf("expected 2 decision rounds, got %d", runner.decisionCalls)
 	}
+	if runner.resetCalls < 2 {
+		t.Fatalf("expected subagent session resets across rounds, got %d", runner.resetCalls)
+	}
 }
 
 type fakeRunner struct {
@@ -81,9 +84,12 @@ func (f *fakeRunner) RunTask(_ context.Context, in agent.TaskInput) (agent.TaskR
 
 func (f *fakeRunner) EndRun(_ string) {}
 
+func (f *fakeRunner) ResetSession(_, _ string) {}
+
 type scriptedRunner struct {
 	mu            sync.Mutex
 	decisionCalls int
+	resetCalls    int
 }
 
 func (s *scriptedRunner) RunTask(_ context.Context, in agent.TaskInput) (agent.TaskResult, error) {
@@ -117,3 +123,9 @@ func (s *scriptedRunner) RunTask(_ context.Context, in agent.TaskInput) (agent.T
 }
 
 func (s *scriptedRunner) EndRun(_ string) {}
+
+func (s *scriptedRunner) ResetSession(_, _ string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resetCalls++
+}

@@ -76,3 +76,48 @@ func TestRegistryPluginRegistration(t *testing.T) {
 		t.Fatalf("expected plugin output, got %s", out.Output)
 	}
 }
+
+func TestRegistryMessageAndFinishOutputsAreMinimal(t *testing.T) {
+	r := NewRegistry()
+	RegisterBuiltins(r)
+
+	msgOut, finished, summary, err := r.Execute(context.Background(), backboard.ToolCall{
+		ID: "m1",
+		Function: backboard.ToolCallFunction{
+			Name:            "message",
+			ParsedArguments: []byte(`{"content":"verbose agent text"}`),
+		},
+	}, &ExecutionContext{WorkspaceRoot: t.TempDir(), Todos: runtime.NewTodoStore(), Role: types.RoleCoder})
+	if err != nil {
+		t.Fatalf("message tool failed: %v", err)
+	}
+	if finished {
+		t.Fatal("message should not finish run")
+	}
+	if summary != "" {
+		t.Fatalf("message summary should be empty, got %q", summary)
+	}
+	if strings.Contains(msgOut.Output, "verbose agent text") {
+		t.Fatalf("message output leaked content: %s", msgOut.Output)
+	}
+
+	finishOut, finishFlag, finishSummary, err := r.Execute(context.Background(), backboard.ToolCall{
+		ID: "f1",
+		Function: backboard.ToolCallFunction{
+			Name:            "finish",
+			ParsedArguments: []byte(`{"summary":"final detailed summary"}`),
+		},
+	}, &ExecutionContext{WorkspaceRoot: t.TempDir(), Todos: runtime.NewTodoStore(), Role: types.RoleCoder})
+	if err != nil {
+		t.Fatalf("finish tool failed: %v", err)
+	}
+	if !finishFlag {
+		t.Fatal("finish should mark run finished")
+	}
+	if finishSummary != "final detailed summary" {
+		t.Fatalf("expected finish summary, got %q", finishSummary)
+	}
+	if strings.Contains(finishOut.Output, "final detailed summary") {
+		t.Fatalf("finish output leaked summary: %s", finishOut.Output)
+	}
+}

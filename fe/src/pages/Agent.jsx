@@ -116,9 +116,33 @@ const getToolLabel = (toolName, message) => {
   return label
 }
 
+const findToolResultEvent = (event, results) => {
+  const eventMeta = event?.Meta || {}
+  const toolCallID = eventMeta.tool_call_id
+  const agentID = event?.AgentID
+  const runID = event?.RunID
+
+  if (toolCallID) {
+    const exact = results.find((r) => (
+      r?.RunID === runID
+      && r?.AgentID === agentID
+      && r?.Meta?.tool_call_id === toolCallID
+    ))
+    if (exact) return exact
+  }
+
+  return results.find((r) => (
+    r?.RunID === runID
+    && r?.AgentID === agentID
+    && r?.Meta?.tool_index === eventMeta.tool_index
+    && r?.Meta?.iteration === eventMeta.iteration
+    && r?.Meta?.thread_id === eventMeta.thread_id
+  ))
+}
+
 const ToolCallNode = ({ event, results }) => {
   const [expanded, setExpanded] = useState(false)
-  const resultEvent = results.find(r => r.Meta?.tool_index === event.Meta?.tool_index)
+  const resultEvent = findToolResultEvent(event, results)
   const isFinished = !!resultEvent
   const isError = resultEvent?.Status === 'error'
   const agentLabel = event.AgentID || 'unknown-agent'
