@@ -126,24 +126,24 @@ const ToolCallNode = ({ event, results }) => {
   return (
     <div className="flex flex-col ml-6 my-1">
       <div 
-        className="flex items-start gap-2 text-zinc-300 hover:text-white cursor-pointer group py-1"
+        className="flex items-center gap-2 text-zinc-300 hover:text-white cursor-pointer group py-1"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex items-center justify-center w-4 h-4 shrink-0 mt-0.5">
+        <div className="flex items-center justify-center w-4 h-4 shrink-0">
           {expanded ? <FaChevronDown className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" /> : <FaChevronRight className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" />}
         </div>
-        <div className="shrink-0 mt-0.5">{getToolIcon(event.ToolName)}</div>
+        <div className="shrink-0">{getToolIcon(event.ToolName)}</div>
         <span
           className="text-sm font-medium flex-1 min-w-0 leading-5 overflow-hidden text-ellipsis whitespace-nowrap"
           title={getToolLabel(event.ToolName, event.Message)}
         >
           {getToolLabel(event.ToolName, event.Message)}
         </span>
-        <span className="ml-2 rounded-full border border-[#ff5aa8]/40 bg-[#ff5aa8]/10 px-2 py-0.5 text-[10px] font-medium text-[#ff8ec8] shrink-0 mt-0.5">
+        <span className="ml-2 rounded-full border border-[#ff5aa8]/40 bg-[#ff5aa8]/10 px-2 py-0.5 text-[10px] font-medium text-[#ff8ec8] shrink-0">
           {agentLabel}
         </span>
 
-        <div className="ml-2 shrink-0 w-3.5 h-3.5 flex items-center justify-center mt-0.5">
+        <div className="ml-2 shrink-0 w-3.5 h-3.5 flex items-center justify-center">
           {isFinished ? (
             isError ? <FaCircleXmark className="w-3.5 h-3.5 text-red-500" /> : <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
           ) : (
